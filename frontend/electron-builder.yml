@@ -5,6 +5,8 @@ directories:
 files:
   - dist/**
   - dist-electron/**
+asarUnpack:
+  - assets/icon.ico
 extraResources:
   - from: ../backend/dist/backend.exe
     to: backend.exe

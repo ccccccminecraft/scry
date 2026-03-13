@@ -32,10 +32,15 @@ async function waitForBackend(url: string, retries = 30, interval = 500): Promis
 }
 
 async function createWindow(): Promise<void> {
+  const iconPath = isDev
+    ? path.join(__dirname, '../../assets/icon.ico')
+    : path.join(process.resourcesPath, 'app.asar.unpacked/assets/icon.ico')
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     resizable: false,
+    icon: iconPath,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
