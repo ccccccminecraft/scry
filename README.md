@@ -2,6 +2,9 @@
 
 Magic Online（MTGO）の対戦ログ（`.dat`）を解析・AI 分析する Windows デスクトップアプリ。
 
+> **アプリの使い方は [`GUIDE.md`](GUIDE.md) を参照してください。**
+> このドキュメントは開発者向けのセットアップ・ビルド手順です。
+
 ---
 
 ## 機能概要
@@ -246,6 +249,6 @@ scry/
 | バックエンド | Python 3.11 / FastAPI / uvicorn |
 | DB | SQLite / SQLAlchemy 2.x |
 | AI 分析 | Claude API（デフォルト）/ OpenAI API |
-| API キー管理 | OS キーストア（keyring） |
+| API キー管理 | SQLite（ローカルデータベース） |
 | 開発環境 | Docker Compose + WSL2 |
 | 配布 | PyInstaller + electron-builder（Windows installer） |
