@@ -1,0 +1,16 @@
+appId: com.scry.app
+productName: Scry
+directories:
+  output: dist_electron
+files:
+  - dist/**
+  - dist-electron/**
+extraResources:
+  - from: ../backend/dist/backend.exe
+    to: backend.exe
+win:
+  target: nsis
+  icon: assets/icon.ico
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

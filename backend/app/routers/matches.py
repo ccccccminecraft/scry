@@ -1,0 +1,462 @@
+"""
+GET    /api/matches                                  - 対戦履歴一覧
+GET    /api/matches/{match_id}                       - 対戦詳細
+GET    /api/matches/{match_id}/games/{game_id}/actions - アクションログ
+PATCH  /api/matches/{match_id}/players/{player_name} - デッキ名・ゲームプラン更新
+DELETE /api/matches/all                              - 全データ削除（開発用）
+"""
+from __future__ import annotations
+
+from datetime import datetime, timezone, timedelta
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from database import get_db
+from models.core import Match, MatchPlayer, Game, Mulligan, Action
+
+router = APIRouter()
+
+
+@router.delete("/matches/all")
+def delete_all_matches(db: Session = Depends(get_db)):
+    """全対戦データを削除する（開発用）。"""
+    db.query(Action).delete()
+    db.query(Mulligan).delete()
+    db.query(Game).delete()
+    db.query(MatchPlayer).delete()
+    db.query(Match).delete()
+    db.commit()
+    return {"status": "cleared"}
+
+
+@router.get("/matches")
+def list_matches(
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    player: str | None = Query(default=None),
+    opponent: str | None = Query(default=None),
+    deck: str | None = Query(default=None),
+    opponent_deck: str | None = Query(default=None),
+    format: str | None = Query(default=None),
+    date_from: str | None = Query(default=None, description="YYYY-MM-DD"),
+    date_to: str | None = Query(default=None, description="YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+):
+    q = db.query(Match)
+
+    if player:
+        player_sub = (
+            db.query(MatchPlayer.match_id)
+            .filter(MatchPlayer.player_name == player)
+            .subquery()
+        )
+        q = q.filter(Match.id.in_(player_sub))
+
+    if opponent:
+        opp_sub = (
+            db.query(MatchPlayer.match_id)
+            .filter(MatchPlayer.player_name == opponent)
+            .subquery()
+        )
+        q = q.filter(Match.id.in_(opp_sub))
+
+    if deck:
+        deck_sub = (
+            db.query(MatchPlayer.match_id)
+            .filter(
+                MatchPlayer.player_name == player,
+                MatchPlayer.deck_name == deck,
+            )
+            .subquery()
+        )
+        q = q.filter(Match.id.in_(deck_sub))
+
+    if opponent_deck:
+        opp_deck_filter = [MatchPlayer.deck_name == opponent_deck]
+        if player:
+            opp_deck_filter.append(MatchPlayer.player_name != player)
+        opp_deck_sub = (
+            db.query(MatchPlayer.match_id)
+            .filter(*opp_deck_filter)
+            .subquery()
+        )
+        q = q.filter(Match.id.in_(opp_deck_sub))
+
+    if format:
+        q = q.filter(Match.format == format)
+
+    if date_from:
+        q = q.filter(Match.played_at >= datetime.fromisoformat(date_from).replace(tzinfo=timezone.utc))
+
+    if date_to:
+        dt_to = datetime.fromisoformat(date_to).replace(tzinfo=timezone.utc) + timedelta(days=1)
+        q = q.filter(Match.played_at < dt_to)
+
+    total = q.count()
+    rows = (
+        q
+        .order_by(Match.played_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    matches = []
+    for m in rows:
+        sorted_players = sorted(m.players, key=lambda p: p.seat)
+        matches.append({
+            "match_id": m.id,
+            "date": m.played_at.isoformat(),
+            "players": [p.player_name for p in sorted_players],
+            "decks": [p.deck_name for p in sorted_players],
+            "match_winner": m.match_winner,
+            "game_count": m.game_count,
+            "format": m.format,
+        })
+
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "matches": matches,
+    }
+
+
+def _export_filter_params():
+    """エクスポート用フィルターパラメーターの共通定義（関数で共有）。"""
+
+
+@router.get("/matches/export/count")
+def export_count(
+    player: str = Query(...),
+    opponent: str | None = Query(default=None),
+    deck: str | None = Query(default=None),
+    opponent_deck: str | None = Query(default=None),
+    format: str | None = Query(default=None),
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """エクスポート対象マッチ数を返す。"""
+    from app.routers.stats import _build_match_id_list
+    match_ids = _build_match_id_list(db, player, opponent, deck, opponent_deck, format, date_from, date_to)
+    return {"count": len(match_ids)}
+
+
+@router.get("/matches/export")
+def export_matches(
+    player: str = Query(...),
+    opponent: str | None = Query(default=None),
+    deck: str | None = Query(default=None),
+    opponent_deck: str | None = Query(default=None),
+    format: str | None = Query(default=None),
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    detail_level: str = Query(default="matches"),
+    limit: int = Query(default=200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
+    """対戦データを Markdown 形式でエクスポートする。"""
+    from app.routers.stats import _build_match_id_list, _calc_deck_stats
+
+    match_ids = _build_match_id_list(db, player, opponent, deck, opponent_deck, format, date_from, date_to)
+    markdown = _build_export_markdown(player, db, match_ids, detail_level, limit,
+                                      opponent, deck, opponent_deck, format, date_from, date_to)
+
+    from datetime import datetime as dt
+    date_str = dt.now().strftime("%Y%m%d%H%M%S")
+    filename = f"scry_export_{player}_{date_str}.md"
+    return Response(
+        content=markdown,
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _build_export_markdown(
+    player: str,
+    db: Session,
+    match_ids: list[str],
+    detail_level: str,
+    limit: int,
+    opponent: str | None,
+    deck: str | None,
+    opponent_deck: str | None,
+    format_: str | None,
+    date_from: str | None,
+    date_to: str | None,
+) -> str:
+    from datetime import datetime as dt
+    from app.routers.stats import _calc_deck_stats
+
+    now_str = dt.now().strftime("%Y-%m-%d %H:%M")
+    total_count = len(match_ids)
+    output_count = min(limit, total_count)
+
+    filter_parts = []
+    if opponent:
+        filter_parts.append(f"対戦相手={opponent}")
+    if deck:
+        filter_parts.append(f"使用デッキ={deck}")
+    if opponent_deck:
+        filter_parts.append(f"相手デッキ={opponent_deck}")
+    if format_:
+        filter_parts.append(f"フォーマット={format_}")
+    if date_from:
+        filter_parts.append(f"開始日={date_from}")
+    if date_to:
+        filter_parts.append(f"終了日={date_to}")
+    filter_str = "、".join(filter_parts) if filter_parts else "なし（全データ）"
+
+    lines = [
+        f"# 対戦データ — {player}",
+        "",
+        f"エクスポート日時: {now_str}",
+        f"フィルター: {filter_str}",
+        f"対象マッチ数: {total_count} 件（直近 {output_count} 件を出力）",
+        "",
+        "---",
+        "",
+    ]
+
+    if not match_ids:
+        lines.append("*対象データなし*")
+        return "\n".join(lines)
+
+    # ── サマリー ──────────────────────────────────────────────────────────
+    matches_all = db.query(Match).filter(Match.id.in_(match_ids)).all()
+    wins = sum(1 for m in matches_all if m.match_winner == player)
+    losses = len(matches_all) - wins
+    win_rate = wins / len(matches_all) if matches_all else 0.0
+
+    games_all = db.query(Game).filter(Game.match_id.in_(match_ids)).all()
+    total_games = len(games_all)
+    first_games = [g for g in games_all if g.first_player == player]
+    second_games = [g for g in games_all if g.first_player != player]
+    first_wr = sum(1 for g in first_games if g.winner == player) / len(first_games) if first_games else 0.0
+    second_wr = sum(1 for g in second_games if g.winner == player) / len(second_games) if second_games else 0.0
+    avg_turns = sum(g.turns for g in games_all) / total_games if total_games else 0.0
+
+    game_ids = [g.id for g in games_all]
+    mul_game_ids = set(
+        r[0] for r in db.query(Mulligan.game_id)
+        .filter(Mulligan.game_id.in_(game_ids), Mulligan.player_name == player, Mulligan.count > 0)
+        .distinct().all()
+    )
+    mulligan_rate = len(mul_game_ids) / total_games if total_games else 0.0
+
+    lines += [
+        "## サマリー",
+        "",
+        "| 項目 | 値 |",
+        "|------|-----|",
+        f"| 総マッチ数 | {len(matches_all)} |",
+        f"| 勝利 / 敗北 | {wins} / {losses} |",
+        f"| 勝率 | {win_rate:.1%} |",
+        f"| 先手勝率 | {first_wr:.1%} |",
+        f"| 後手勝率 | {second_wr:.1%} |",
+        f"| 平均ターン数 | {avg_turns:.1f} |",
+        f"| マリガン率 | {mulligan_rate:.1%} |",
+        "",
+    ]
+
+    deck_stats = _calc_deck_stats(db, player, match_ids)
+    if deck_stats:
+        lines += [
+            "### デッキ別勝率",
+            "",
+            "| デッキ | マッチ数 | 勝率 |",
+            "|--------|---------|------|",
+        ]
+        for d in deck_stats:
+            lines.append(f"| {d['deck_name']} | {d['matches']} | {d['win_rate']:.1%} |")
+        lines.append("")
+
+    if detail_level == "summary":
+        return "\n".join(lines)
+
+    # ── マッチ一覧 ────────────────────────────────────────────────────────
+    lines += ["---", "", "## 対戦一覧", ""]
+
+    target_matches = (
+        db.query(Match)
+        .filter(Match.id.in_(match_ids))
+        .order_by(Match.played_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    for i, m in enumerate(target_matches, 1):
+        date_str = m.played_at.strftime("%Y-%m-%d %H:%M")
+        fmt = m.format or "—"
+
+        player_mp = next((p for p in m.players if p.player_name == player), None)
+        opponent_mp = next((p for p in m.players if p.player_name != player), None)
+        player_deck_name = player_mp.deck_name if player_mp else None
+        opponent_name = opponent_mp.player_name if opponent_mp else "—"
+        opponent_deck_name = opponent_mp.deck_name if opponent_mp else None
+
+        sorted_games = sorted(m.games, key=lambda g: g.game_number)
+        wins_g = sum(1 for g in sorted_games if g.winner == player)
+        losses_g = len(sorted_games) - wins_g
+        result = "勝利" if m.match_winner == player else "敗北"
+
+        lines += [
+            f"### [{i}] {date_str} — {fmt}",
+            "",
+            f"- **対戦相手**: {opponent_name}",
+            f"- **使用デッキ**: {player_deck_name or '—'}",
+            f"- **相手デッキ**: {opponent_deck_name or '—'}",
+            f"- **結果**: {result} ({wins_g}-{losses_g})",
+            "",
+            "| ゲーム | 結果 | 先後 | ターン数 | マリガン |",
+            "|--------|------|------|---------|---------|",
+        ]
+
+        for g in sorted_games:
+            g_result = "勝利" if g.winner == player else "敗北"
+            first_second = "先手" if g.first_player == player else "後手"
+            mul_count = next((mul.count for mul in g.mulligans if mul.player_name == player), 0)
+            mul_str = "なし" if mul_count == 0 else f"{mul_count}回"
+            lines.append(f"| Game {g.game_number} | {g_result} | {first_second} | {g.turns} | {mul_str} |")
+
+        lines.append("")
+
+        if detail_level == "actions":
+            for g in sorted_games:
+                actions = (
+                    db.query(Action)
+                    .filter(Action.game_id == g.id)
+                    .order_by(Action.sequence)
+                    .all()
+                )
+                if not actions:
+                    continue
+                lines += [
+                    f"#### Game {g.game_number} アクション詳細",
+                    "",
+                    "| ターン | プレイヤー | 種別 | カード | 対象 |",
+                    "|--------|-----------|------|--------|------|",
+                ]
+                for a in actions:
+                    lines.append(
+                        f"| {a.turn} | {a.player_name} | {a.action_type}"
+                        f" | {a.card_name or '—'} | {a.target_name or '—'} |"
+                    )
+                lines.append("")
+
+    return "\n".join(lines)
+
+
+@router.get("/matches/latest-date")
+def get_latest_match_date(db: Session = Depends(get_db)):
+    """最新の played_at を返す。matches が空のときは null を返す。"""
+    from sqlalchemy import func
+    latest = db.query(func.max(Match.played_at)).scalar()
+    return {"latest_date": latest.isoformat() if latest else None}
+
+
+@router.get("/matches/{match_id}")
+def get_match(match_id: str, db: Session = Depends(get_db)):
+    """対戦詳細を返す。"""
+    m = db.get(Match, match_id)
+    if m is None:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    sorted_players = sorted(m.players, key=lambda p: p.seat)
+    player_names = [p.player_name for p in sorted_players]
+
+    games = []
+    for g in sorted(m.games, key=lambda g: g.game_number):
+        # マリガン: 両プレイヤー分を補完（0回でも含む）
+        mul_map: dict[str, int] = {name: 0 for name in player_names}
+        for mul in g.mulligans:
+            mul_map[mul.player_name] = mul.count
+        games.append({
+            "game_id": g.id,
+            "game_number": g.game_number,
+            "winner": g.winner,
+            "turns": g.turns,
+            "first_player": g.first_player,
+            "mulligans": mul_map,
+        })
+
+    return {
+        "match_id": m.id,
+        "date": m.played_at.isoformat(),
+        "players": [
+            {
+                "player_name": p.player_name,
+                "deck_name": p.deck_name,
+                "game_plan": p.game_plan,
+            }
+            for p in sorted_players
+        ],
+        "match_winner": m.match_winner,
+        "format": m.format,
+        "games": games,
+    }
+
+
+@router.get("/matches/{match_id}/games/{game_id}/actions")
+def get_actions(match_id: str, game_id: int, db: Session = Depends(get_db)):
+    """ゲームのアクションログを返す。"""
+    game = db.get(Game, game_id)
+    if game is None or game.match_id != match_id:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    actions = (
+        db.query(Action)
+        .filter(Action.game_id == game_id)
+        .order_by(Action.sequence)
+        .all()
+    )
+
+    return {
+        "game_id": game_id,
+        "actions": [
+            {
+                "turn": a.turn,
+                "active_player": a.active_player,
+                "player": a.player_name,
+                "action_type": a.action_type,
+                "card_name": a.card_name,
+                "target_name": a.target_name,
+                "sequence": a.sequence,
+            }
+            for a in actions
+        ],
+    }
+
+
+class PatchPlayerBody(BaseModel):
+    deck_name: str | None = None
+    game_plan: str | None = None
+
+
+@router.patch("/matches/{match_id}/players/{player_name}")
+def patch_player(
+    match_id: str,
+    player_name: str,
+    body: PatchPlayerBody,
+    db: Session = Depends(get_db),
+):
+    """デッキ名・ゲームプランを更新する。"""
+    mp = (
+        db.query(MatchPlayer)
+        .filter(MatchPlayer.match_id == match_id, MatchPlayer.player_name == player_name)
+        .first()
+    )
+    if mp is None:
+        raise HTTPException(status_code=404, detail="Player not found")
+
+    if body.deck_name is not None:
+        mp.deck_name = body.deck_name or None
+    if body.game_plan is not None:
+        mp.game_plan = body.game_plan or None
+
+    db.commit()
+    return {"player_name": mp.player_name, "deck_name": mp.deck_name, "game_plan": mp.game_plan}
