@@ -8,7 +8,7 @@ app = FastAPI(title="Scry", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "file://", "null"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -36,3 +36,8 @@ def on_startup() -> None:
         logging.getLogger(__name__).warning("seed_initial_data failed: %s", e)
     finally:
         db.close()
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8000)
