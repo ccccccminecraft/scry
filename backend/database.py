@@ -1,7 +1,25 @@
+import os
+import sys
+from pathlib import Path
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-DATABASE_URL = "sqlite:////database/mtgo.db"
+
+def _get_database_url() -> str:
+    # 環境変数で明示指定されている場合はそちらを優先（Docker開発環境）
+    if url := os.environ.get("DATABASE_URL"):
+        return url
+    # Windows 本番環境: %APPDATA%\Scry\mtgo.db
+    if sys.platform == "win32":
+        db_dir = Path(os.environ["APPDATA"]) / "Scry"
+    else:
+        db_dir = Path("/database")
+    db_dir.mkdir(parents=True, exist_ok=True)
+    return f"sqlite:///{db_dir / 'mtgo.db'}"
+
+
+DATABASE_URL = _get_database_url()
 
 engine = create_engine(
     DATABASE_URL,
