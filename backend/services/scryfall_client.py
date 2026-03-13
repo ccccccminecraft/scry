@@ -24,9 +24,10 @@ REQUEST_TIMEOUT = 10.0
 class ScryfallClient:
     """Scryfall API クライアント。キャッシュ済みの legality は DB から取得する。"""
 
+    _last_request: float = 0.0  # クラス変数: インスタンス間でレート制限を共有
+
     def __init__(self, db: Session) -> None:
         self._db = db
-        self._last_request: float = 0.0
 
     def fetch_legalities(self, card_names: list[str]) -> dict[str, CardLegality]:
         """
@@ -68,6 +69,11 @@ class ScryfallClient:
             if response.status_code == 404:
                 logger.debug("Scryfall: card_name=%r not found", card_name)
                 return None
+            if response.status_code == 429:
+                retry_after = int(response.headers.get("Retry-After", "2"))
+                logger.warning("Scryfall rate limited, waiting %ds", retry_after)
+                time.sleep(retry_after)
+                response = httpx.get(url, params={"exact": card_name}, timeout=REQUEST_TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except Exception as e:
