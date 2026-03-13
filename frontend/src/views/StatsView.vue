@@ -37,6 +37,7 @@
             <option v-for="f in formatList" :key="f" :value="f">{{ f }}</option>
           </select>
         </div>
+        <div class="stats__filter-break"></div>
         <div class="stats__filter-group">
           <label class="stats__label">対戦日時（開始）</label>
           <input type="date" v-model="dateFrom" class="stats__input-date" />
@@ -313,6 +314,10 @@ onMounted(async () => {
   display: flex;
   gap: 16px;
   flex-wrap: wrap;
+}
+
+.stats__filter-break {
+  width: 100%;
 }
 
 .stats__filter-group {
