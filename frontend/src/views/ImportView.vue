@@ -155,13 +155,11 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import { importSingleFile, type ImportResult } from '../api/import'
 import { fetchSettings, updateSettings } from '../api/settings'
 import { fetchLatestMatchDate } from '../api/matches'
 import { useToast } from '../composables/useToast'
 
-const router = useRouter()
 const { showError, showSuccess } = useToast()
 
 type State = 'idle' | 'scanning' | 'scan_result' | 'importing' | 'batch_result'

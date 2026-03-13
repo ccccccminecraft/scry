@@ -207,7 +207,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, useTemplateRef } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useToast } from '../composables/useToast'
 import {
   fetchDeckDefinitions, createDeckDefinition, updateDeckDefinition,
