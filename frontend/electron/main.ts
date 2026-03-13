@@ -51,7 +51,7 @@ async function createWindow(): Promise<void> {
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173')
   } else {
-    await waitForBackend('http://localhost:8000/api/health')
+    await waitForBackend('http://localhost:18432/api/health')
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 }

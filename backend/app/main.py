@@ -8,7 +8,7 @@ app = FastAPI(title="Scry", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "file://", "null"],
+    allow_origins=["http://localhost:5173", "http://localhost:18432", "file://", "null"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -40,4 +40,4 @@ def on_startup() -> None:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=18432)

@@ -100,7 +100,7 @@ export async function streamChat(
 ): Promise<void> {
   let response: Response
   try {
-    response = await fetch('http://localhost:8000/api/analysis/chat', {
+    response = await fetch('http://localhost:18432/api/analysis/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),
