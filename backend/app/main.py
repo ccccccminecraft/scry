@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import health, import_, matches, stats, decks, settings, analysis
+from app.routers import health, import_, matches, stats, decks, settings, analysis, presets
 from database import init_db
 
 app = FastAPI(title="Scry", version="0.1.0")
@@ -20,6 +20,7 @@ app.include_router(stats.router, prefix="/api")
 app.include_router(decks.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
 app.include_router(analysis.router, prefix="/api")
+app.include_router(presets.router, prefix="/api")
 
 
 @app.on_event("startup")

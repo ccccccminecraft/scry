@@ -7,8 +7,8 @@
     <router-link to="/import" class="nav__item">インポート</router-link>
     <hr class="nav__divider" />
     <router-link to="/decks" class="nav__item">デッキ定義</router-link>
-    <router-link to="/settings" class="nav__item">設定</router-link>
     <router-link to="/presets" class="nav__item">プリセット管理</router-link>
+    <router-link to="/settings" class="nav__item">設定</router-link>
   </nav>
 </template>
 
