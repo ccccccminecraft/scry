@@ -2,50 +2,49 @@
   <div class="stats">
     <div class="stats__header">
       <h1 class="stats__title">統計</h1>
-      <div class="stats__filters">
-        <div class="stats__filter-group">
-          <label class="stats__label">プレイヤー</label>
-          <select v-model="selectedPlayer" class="stats__select">
-            <option v-for="p in playerList" :key="p" :value="p">{{ p }}</option>
-          </select>
-        </div>
-        <div class="stats__filter-group">
-          <label class="stats__label">対戦相手</label>
-          <select v-model="selectedOpponent" class="stats__select">
-            <option value="">すべて</option>
-            <option v-for="o in opponentList" :key="o" :value="o">{{ o }}</option>
-          </select>
-        </div>
-        <div class="stats__filter-group">
-          <label class="stats__label">デッキ</label>
-          <select v-model="selectedDeck" class="stats__select">
-            <option value="">すべて</option>
-            <option v-for="d in deckList" :key="d" :value="d">{{ d }}</option>
-          </select>
-        </div>
-        <div class="stats__filter-group">
-          <label class="stats__label">相手デッキ</label>
-          <select v-model="selectedOpponentDeck" class="stats__select">
-            <option value="">すべて</option>
-            <option v-for="d in opponentDeckList" :key="d" :value="d">{{ d }}</option>
-          </select>
-        </div>
-        <div class="stats__filter-group">
-          <label class="stats__label">フォーマット</label>
-          <select v-model="selectedFormat" class="stats__select">
-            <option value="">すべて</option>
-            <option v-for="f in formatList" :key="f" :value="f">{{ f }}</option>
-          </select>
-        </div>
-        <div class="stats__filter-break"></div>
-        <div class="stats__filter-group">
-          <label class="stats__label">対戦日時（開始）</label>
-          <input type="date" v-model="dateFrom" class="stats__input-date" />
-        </div>
-        <div class="stats__filter-group">
-          <label class="stats__label">対戦日時（終了）</label>
-          <input type="date" v-model="dateTo" class="stats__input-date" />
-        </div>
+    </div>
+    <div class="stats__filters">
+      <div class="stats__filter-group">
+        <label class="stats__label">プレイヤー</label>
+        <select v-model="selectedPlayer" class="stats__select">
+          <option v-for="p in playerList" :key="p" :value="p">{{ p }}</option>
+        </select>
+      </div>
+      <div class="stats__filter-group">
+        <label class="stats__label">対戦相手</label>
+        <select v-model="selectedOpponent" class="stats__select">
+          <option value="">すべて</option>
+          <option v-for="o in opponentList" :key="o" :value="o">{{ o }}</option>
+        </select>
+      </div>
+      <div class="stats__filter-group">
+        <label class="stats__label">デッキ</label>
+        <select v-model="selectedDeck" class="stats__select">
+          <option value="">すべて</option>
+          <option v-for="d in deckList" :key="d" :value="d">{{ d }}</option>
+        </select>
+      </div>
+      <div class="stats__filter-group">
+        <label class="stats__label">相手デッキ</label>
+        <select v-model="selectedOpponentDeck" class="stats__select">
+          <option value="">すべて</option>
+          <option v-for="d in opponentDeckList" :key="d" :value="d">{{ d }}</option>
+        </select>
+      </div>
+      <div class="stats__filter-group">
+        <label class="stats__label">フォーマット</label>
+        <select v-model="selectedFormat" class="stats__select">
+          <option value="">すべて</option>
+          <option v-for="f in formatList" :key="f" :value="f">{{ f }}</option>
+        </select>
+      </div>
+      <div class="stats__filter-group">
+        <label class="stats__label">対戦日時（開始）</label>
+        <input type="date" v-model="dateFrom" class="stats__input-date" />
+      </div>
+      <div class="stats__filter-group">
+        <label class="stats__label">対戦日時（終了）</label>
+        <input type="date" v-model="dateTo" class="stats__input-date" />
       </div>
     </div>
 
@@ -303,11 +302,7 @@ onActivated(initLists)
 }
 
 .stats__header {
-  display: flex;
-  align-items: flex-end;
-  gap: 24px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
+  margin-bottom: 12px;
 }
 
 .stats__title {
@@ -319,41 +314,42 @@ onActivated(initLists)
 
 .stats__filters {
   display: flex;
-  gap: 16px;
   flex-wrap: wrap;
-}
-
-.stats__filter-break {
-  width: 100%;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 10px 16px;
+  background: #fff;
+  border: 1px solid #e0d8c8;
+  border-radius: 6px;
 }
 
 .stats__filter-group {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .stats__label {
-  font-size: 11px;
+  font-size: 10px;
   color: #7a6a55;
 }
 
 .stats__select {
-  padding: 4px 8px;
+  padding: 3px 6px;
   border: 1px solid #c8b89a;
   border-radius: 4px;
   background: #fff;
   color: #2c2416;
-  font-size: 13px;
+  font-size: 11px;
 }
 
 .stats__input-date {
-  padding: 4px 8px;
+  padding: 3px 6px;
   border: 1px solid #c8b89a;
   border-radius: 4px;
   background: #fff;
   color: #2c2416;
-  font-size: 13px;
+  font-size: 11px;
   font-family: inherit;
 }
 
