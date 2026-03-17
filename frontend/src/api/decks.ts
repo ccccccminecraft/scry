@@ -79,6 +79,15 @@ export interface GeneratedDeckPayload {
   definitions: { deck_name: string; threshold: number; cards: string[] }[]
 }
 
+export async function applyDeckDefinitions(overwrite: boolean): Promise<{ updated: number; skipped: number }> {
+  const res = await client.post<{ updated: number; skipped: number }>(
+    '/api/decks/apply-definitions',
+    null,
+    { params: { overwrite }, timeout: 120000 },
+  )
+  return res.data
+}
+
 export async function generateDeckDefinitions(
   format: string | null,
   notes: string | null,

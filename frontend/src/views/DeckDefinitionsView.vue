@@ -68,6 +68,26 @@
       </div>
     </div>
 
+    <!-- 既存試合への適用 -->
+    <div class="deck-def__section">
+      <div class="deck-def__section-title">既存試合へのデッキ定義適用</div>
+      <div class="deck-def__bulk-form">
+        <div class="deck-def__apply-btns">
+          <button
+            class="deck-def__btn deck-def__btn--primary"
+            :disabled="applying"
+            @click="runApply(false)"
+          >{{ applying ? '適用中...' : 'デッキ名未設定の試合に適用' }}</button>
+          <button
+            class="deck-def__btn"
+            :disabled="applying"
+            @click="runApply(true)"
+          >{{ applying ? '適用中...' : 'すべての試合に適用（上書き）' }}</button>
+        </div>
+        <p class="deck-def__apply-note">「デッキ名未設定」は deck_name が空の試合のみを対象にします。「すべての試合」は既存のデッキ名も上書きします。</p>
+      </div>
+    </div>
+
     <!-- Claude 生成 -->
     <div class="deck-def__section">
       <div class="deck-def__section-title">Claude で生成</div>
@@ -93,10 +113,17 @@
     <div class="deck-def__section">
       <div class="deck-def__section-header">
         <div class="deck-def__section-title">デッキ定義一覧</div>
-        <button class="deck-def__btn deck-def__btn--primary" @click="openNew">＋ 新規作成</button>
+        <div class="deck-def__list-controls">
+          <select v-model="filterDefFormat" class="deck-def__select deck-def__select--sm">
+            <option value="">フォーマット: すべて</option>
+            <option v-for="f in ALL_FORMATS" :key="f" :value="f">{{ f }}</option>
+          </select>
+          <button class="deck-def__btn deck-def__btn--primary" @click="openNew">＋ 新規作成</button>
+        </div>
       </div>
 
       <div v-if="definitions.length === 0" class="deck-def__empty">デッキ定義がありません</div>
+      <div v-else-if="filteredDefinitions.length === 0" class="deck-def__empty">該当するデッキ定義がありません</div>
 
       <table v-else class="deck-def__table">
         <thead>
@@ -110,7 +137,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="d in definitions" :key="d.id">
+          <tr v-for="d in filteredDefinitions" :key="d.id">
             <td>{{ d.player_name ?? '（共通）' }}</td>
             <td>{{ d.deck_name }}</td>
             <td>{{ d.format ?? '—' }}</td>
@@ -207,12 +234,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useToast } from '../composables/useToast'
 import {
   fetchDeckDefinitions, createDeckDefinition, updateDeckDefinition,
   deleteDeckDefinition, deckBulkUpdate, importDeckDefinitions, exportDeckDefinitions,
-  generateDeckDefinitions,
+  generateDeckDefinitions, applyDeckDefinitions,
   type DeckDefinition, type DeckDefinitionInput, type GeneratedDeckPayload,
 } from '../api/decks'
 import { fetchPlayers, fetchFormats } from '../api/stats'
@@ -225,10 +252,31 @@ const definitions = ref<DeckDefinition[]>([])
 const playerList = ref<string[]>([])
 const formatList = ref<string[]>([])
 
+const filterDefFormat = ref('')
+const filteredDefinitions = computed(() => {
+  if (!filterDefFormat.value) return definitions.value
+  return definitions.value.filter(d => d.format === filterDefFormat.value)
+})
+
 // 編集フォーム
 const editingId = ref<number | null>(null)
 const editing = ref<DeckDefinitionInput | null>(null)
 const cardText = ref('')
+
+// apply definitions
+const applying = ref(false)
+
+async function runApply(overwrite: boolean) {
+  applying.value = true
+  try {
+    const res = await applyDeckDefinitions(overwrite)
+    showSuccess(`${res.updated} 件更新しました（スキップ: ${res.skipped} 件）`)
+  } catch (e) {
+    showError(e instanceof Error ? e.message : '適用に失敗しました')
+  } finally {
+    applying.value = false
+  }
+}
 
 // JSON import/export
 const importPlayerName = ref('')
@@ -457,6 +505,30 @@ onMounted(async () => {
 
 .deck-def__section-header .deck-def__section-title {
   margin-bottom: 0;
+}
+
+.deck-def__list-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.deck-def__select--sm {
+  font-size: 11px;
+  padding: 3px 6px;
+}
+
+.deck-def__apply-btns {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.deck-def__apply-note {
+  font-size: 11px;
+  color: #7a6a55;
+  margin: 0;
+  width: 100%;
 }
 
 .deck-def__bulk-form {

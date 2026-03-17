@@ -126,7 +126,7 @@ const filterFormat = ref('')
 const filterDateFrom = ref('')
 const filterDateTo = ref('')
 
-const totalPages = computed(() => Math.ceil(total.value / 50))
+const totalPages = computed(() => Math.ceil(total.value / 10))
 
 const deckList = computed(() => {
   if (!filterPlayer.value) return []

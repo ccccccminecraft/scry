@@ -362,6 +362,57 @@ async def import_deck_definitions(
     return {"imported": imported, "skipped": skipped, "errors": errors}
 
 
+@router.post("/decks/apply-definitions")
+def apply_definitions(
+    overwrite: bool = False,
+    db: Session = Depends(get_db),
+):
+    """
+    デッキ定義を既存試合に後付け適用する。
+
+    - overwrite=false: deck_name が NULL の MatchPlayer のみ対象
+    - overwrite=true : 全 MatchPlayer を対象（既存のデッキ名も上書き）
+    """
+    from sqlalchemy.orm import selectinload
+    from models.core import Game, Action
+    from services.import_service import ImportService
+
+    svc = ImportService(db)
+
+    q = db.query(MatchPlayer).options(
+        selectinload(MatchPlayer.match)
+        .selectinload(Match.games)
+        .selectinload(Game.actions)
+    )
+    if not overwrite:
+        q = q.filter(MatchPlayer.deck_name.is_(None))
+    match_players = q.all()
+
+    updated = 0
+    for mp in match_players:
+        if mp.match is None:
+            continue
+
+        # 該当プレイヤーの play/cast カードのみ収集
+        used_cards: set[str] = set()
+        for game in mp.match.games:
+            for action in game.actions:
+                if (
+                    action.action_type in ("play", "cast")
+                    and action.card_name
+                    and action.player_name == mp.player_name
+                ):
+                    used_cards.add(action.card_name)
+
+        detected = svc._detect_deck(mp.player_name, used_cards, mp.match.format)
+        if detected is not None and detected != mp.deck_name:
+            mp.deck_name = detected
+            updated += 1
+
+    db.commit()
+    return {"updated": updated, "skipped": len(match_players) - updated}
+
+
 @router.get("/deck-definitions/export")
 def export_deck_definitions(db: Session = Depends(get_db)):
     """現在のデッキ定義を JSON 形式でエクスポートする。"""
