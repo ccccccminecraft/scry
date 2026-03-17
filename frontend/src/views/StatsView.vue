@@ -6,34 +6,34 @@
     <div class="stats__filters">
       <div class="stats__filter-group">
         <label class="stats__label">プレイヤー</label>
-        <select v-model="selectedPlayer" class="stats__select">
+        <select v-model="playerModel" class="stats__select">
           <option v-for="p in playerList" :key="p" :value="p">{{ p }}</option>
         </select>
       </div>
       <div class="stats__filter-group">
         <label class="stats__label">対戦相手</label>
-        <select v-model="selectedOpponent" class="stats__select">
+        <select v-model="opponentModel" class="stats__select">
           <option value="">すべて</option>
           <option v-for="o in opponentList" :key="o" :value="o">{{ o }}</option>
         </select>
       </div>
       <div class="stats__filter-group">
         <label class="stats__label">デッキ</label>
-        <select v-model="selectedDeck" class="stats__select">
+        <select v-model="deck" class="stats__select">
           <option value="">すべて</option>
           <option v-for="d in deckList" :key="d" :value="d">{{ d }}</option>
         </select>
       </div>
       <div class="stats__filter-group">
         <label class="stats__label">相手デッキ</label>
-        <select v-model="selectedOpponentDeck" class="stats__select">
+        <select v-model="opponentDeck" class="stats__select">
           <option value="">すべて</option>
           <option v-for="d in opponentDeckList" :key="d" :value="d">{{ d }}</option>
         </select>
       </div>
       <div class="stats__filter-group">
         <label class="stats__label">フォーマット</label>
-        <select v-model="selectedFormat" class="stats__select">
+        <select v-model="formatModel" class="stats__select">
           <option value="">すべて</option>
           <option v-for="f in formatList" :key="f" :value="f">{{ f }}</option>
         </select>
@@ -157,29 +157,21 @@ import { ref, computed, watch, onMounted, onActivated } from 'vue'
 
 defineOptions({ name: 'StatsView' })
 import { useToast } from '../composables/useToast'
-import {
-  fetchStats, fetchCardStats, fetchPlayers, fetchOpponents, fetchPlayerDecks, fetchOpponentDecks, fetchFormats,
-  type StatsResponse, type CardStat,
-} from '../api/stats'
-import { fetchSettings } from '../api/settings'
+import { fetchStats, fetchCardStats, type StatsResponse, type CardStat } from '../api/stats'
+import { useFilterState } from '../composables/useFilterState'
 import WinRateHistoryChart from '../components/charts/WinRateHistoryChart.vue'
 import FirstSecondChart from '../components/charts/FirstSecondChart.vue'
 import DeckStatsChart from '../components/charts/DeckStatsChart.vue'
 
 const { showError } = useToast()
+const {
+  playerModel, opponentModel, formatModel,
+  deck, opponentDeck, dateFrom, dateTo,
+  player, opponent, format,
+  playerList, opponentList, deckList, opponentDeckList, formatList,
+  init,
+} = useFilterState()
 
-const playerList = ref<string[]>([])
-const opponentList = ref<string[]>([])
-const deckList = ref<string[]>([])
-const opponentDeckList = ref<string[]>([])
-const formatList = ref<string[]>([])
-const selectedPlayer = ref('')
-const selectedOpponent = ref('')
-const selectedDeck = ref('')
-const selectedOpponentDeck = ref('')
-const selectedFormat = ref('')
-const dateFrom = ref('')
-const dateTo = ref('')
 const stats = ref<StatsResponse | null>(null)
 const cardStats = ref<CardStat[]>([])
 const opponentCardStats = ref<CardStat[]>([])
@@ -222,14 +214,14 @@ async function loadAll() {
 }
 
 async function loadStats() {
-  if (!selectedPlayer.value) return
+  if (!player.value) return
   try {
     stats.value = await fetchStats({
-      player: selectedPlayer.value,
-      opponent: selectedOpponent.value || undefined,
-      deck: selectedDeck.value || undefined,
-      opponent_deck: selectedOpponentDeck.value || undefined,
-      format: selectedFormat.value || undefined,
+      player: player.value,
+      opponent: opponent.value || undefined,
+      deck: deck.value || undefined,
+      opponent_deck: opponentDeck.value || undefined,
+      format: format.value || undefined,
       date_from: dateFrom.value || undefined,
       date_to: dateTo.value || undefined,
       history_size: 20,
@@ -240,13 +232,13 @@ async function loadStats() {
 }
 
 async function loadCardStats() {
-  if (!selectedPlayer.value) return
+  if (!player.value) return
   const filters = {
-    player: selectedPlayer.value,
-    opponent: selectedOpponent.value || undefined,
-    deck: selectedDeck.value || undefined,
-    opponent_deck: selectedOpponentDeck.value || undefined,
-    format: selectedFormat.value || undefined,
+    player: player.value,
+    opponent: opponent.value || undefined,
+    deck: deck.value || undefined,
+    opponent_deck: opponentDeck.value || undefined,
+    format: format.value || undefined,
     date_from: dateFrom.value || undefined,
     date_to: dateTo.value || undefined,
   }
@@ -258,13 +250,13 @@ async function loadCardStats() {
 }
 
 async function loadOpponentCardStats() {
-  if (!selectedPlayer.value) return
+  if (!player.value) return
   const filters = {
-    player: selectedPlayer.value,
-    opponent: selectedOpponent.value || undefined,
-    deck: selectedDeck.value || undefined,
-    opponent_deck: selectedOpponentDeck.value || undefined,
-    format: selectedFormat.value || undefined,
+    player: player.value,
+    opponent: opponent.value || undefined,
+    deck: deck.value || undefined,
+    opponent_deck: opponentDeck.value || undefined,
+    format: format.value || undefined,
     date_from: dateFrom.value || undefined,
     date_to: dateTo.value || undefined,
   }
@@ -275,88 +267,18 @@ async function loadOpponentCardStats() {
   }
 }
 
-async function loadOpponents() {
-  if (!selectedPlayer.value) return
-  try {
-    opponentList.value = await fetchOpponents(selectedPlayer.value)
-  } catch {
-    showError('対戦相手の取得に失敗しました')
-  }
+watch(
+  [player, opponent, deck, opponentDeck, format, dateFrom, dateTo],
+  loadAll,
+)
+
+async function activate() {
+  const playerSet = await init()
+  if (!playerSet) loadAll()
 }
 
-async function loadDecks() {
-  if (!selectedPlayer.value) { deckList.value = []; return }
-  try {
-    deckList.value = await fetchPlayerDecks(selectedPlayer.value, selectedFormat.value || undefined)
-  } catch {
-    // 失敗しても無視
-  }
-}
-
-async function loadOpponentDecks() {
-  if (!selectedPlayer.value) {
-    opponentDeckList.value = []
-    return
-  }
-  try {
-    opponentDeckList.value = await fetchOpponentDecks(
-      selectedPlayer.value,
-      selectedOpponent.value || undefined,
-      selectedFormat.value || undefined,
-    )
-  } catch {
-    // 失敗しても無視
-  }
-}
-
-watch(selectedPlayer, () => {
-  selectedOpponent.value = ''
-  selectedDeck.value = ''
-  selectedOpponentDeck.value = ''
-  loadOpponents()
-  loadDecks()
-  loadOpponentDecks()
-  loadAll()
-})
-
-watch(selectedOpponent, () => {
-  selectedOpponentDeck.value = ''
-  loadOpponentDecks()
-  loadAll()
-})
-
-watch(selectedFormat, () => {
-  selectedDeck.value = ''
-  selectedOpponentDeck.value = ''
-  loadDecks()
-  loadOpponentDecks()
-  loadAll()
-})
-
-watch([selectedDeck, selectedOpponentDeck, dateFrom, dateTo], () => {
-  loadAll()
-})
-
-async function initLists() {
-  try {
-    const [players, formats, settings] = await Promise.all([fetchPlayers(), fetchFormats(), fetchSettings()])
-    playerList.value = players
-    formatList.value = formats
-    if (!selectedPlayer.value && players.length > 0) {
-      const preferred = settings.default_player
-      selectedPlayer.value = (preferred && players.includes(preferred)) ? preferred : players[0]
-      // watch が発火するので loadAll/loadOpponents は不要
-    } else if (selectedPlayer.value) {
-      loadDecks()
-      loadAll()
-    }
-  } catch {
-    showError('初期データの取得に失敗しました')
-  }
-}
-
-onMounted(initLists)
-onActivated(initLists)
+onMounted(activate)
+onActivated(activate)
 </script>
 
 <style scoped>

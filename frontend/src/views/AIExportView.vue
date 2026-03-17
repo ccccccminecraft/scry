@@ -8,45 +8,45 @@
       <div class="ai-export__filters">
         <div class="ai-export__group">
           <label class="ai-export__label">プレイヤー</label>
-          <select v-model="expPlayer" class="ai-export__select">
+          <select v-model="playerModel" class="ai-export__select">
             <option v-for="p in playerList" :key="p" :value="p">{{ p }}</option>
           </select>
         </div>
         <div class="ai-export__group">
           <label class="ai-export__label">対戦相手</label>
-          <select v-model="expOpponent" class="ai-export__select">
+          <select v-model="opponentModel" class="ai-export__select">
             <option value="">すべて</option>
             <option v-for="o in opponentList" :key="o" :value="o">{{ o }}</option>
           </select>
         </div>
         <div class="ai-export__group">
           <label class="ai-export__label">使用デッキ</label>
-          <select v-model="expDeck" class="ai-export__select">
+          <select v-model="deck" class="ai-export__select">
             <option value="">すべて</option>
             <option v-for="d in deckList" :key="d" :value="d">{{ d }}</option>
           </select>
         </div>
         <div class="ai-export__group">
           <label class="ai-export__label">相手デッキ</label>
-          <select v-model="expOpponentDeck" class="ai-export__select">
+          <select v-model="opponentDeck" class="ai-export__select">
             <option value="">すべて</option>
             <option v-for="d in opponentDeckList" :key="d" :value="d">{{ d }}</option>
           </select>
         </div>
         <div class="ai-export__group">
           <label class="ai-export__label">フォーマット</label>
-          <select v-model="expFormat" class="ai-export__select">
+          <select v-model="formatModel" class="ai-export__select">
             <option value="">すべて</option>
             <option v-for="f in formatList" :key="f" :value="f">{{ f }}</option>
           </select>
         </div>
         <div class="ai-export__group">
           <label class="ai-export__label">対戦日（開始）</label>
-          <input v-model="expDateFrom" type="date" class="ai-export__select" />
+          <input v-model="dateFrom" type="date" class="ai-export__select" />
         </div>
         <div class="ai-export__group">
           <label class="ai-export__label">対戦日（終了）</label>
-          <input v-model="expDateTo" type="date" class="ai-export__select" />
+          <input v-model="dateTo" type="date" class="ai-export__select" />
         </div>
       </div>
     </div>
@@ -95,7 +95,7 @@
     <div class="ai-export__footer">
       <button
         class="ai-export__btn ai-export__btn--primary"
-        :disabled="!expPlayer || downloading"
+        :disabled="!player || downloading"
         @click="runExport"
       >{{ downloading ? '処理中…' : 'エクスポート' }}</button>
     </div>
@@ -113,26 +113,19 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import { fetchExportCount, fetchExportMarkdown, type ExportDetailLevel } from '../api/matches'
-import { fetchPlayers, fetchOpponents, fetchPlayerDecks, fetchOpponentDecks, fetchFormats } from '../api/stats'
-import { fetchSettings } from '../api/settings'
 import { useToast } from '../composables/useToast'
+import { useFilterState } from '../composables/useFilterState'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 
 const { showError } = useToast()
+const {
+  playerModel, opponentModel, formatModel,
+  deck, opponentDeck, dateFrom, dateTo,
+  player, opponent, format,
+  playerList, opponentList, deckList, opponentDeckList, formatList,
+  init,
+} = useFilterState()
 
-const playerList = ref<string[]>([])
-const opponentList = ref<string[]>([])
-const deckList = ref<string[]>([])
-const opponentDeckList = ref<string[]>([])
-const formatList = ref<string[]>([])
-
-const expPlayer = ref('')
-const expOpponent = ref('')
-const expDeck = ref('')
-const expOpponentDeck = ref('')
-const expFormat = ref('')
-const expDateFrom = ref('')
-const expDateTo = ref('')
 const expDetailLevel = ref<ExportDetailLevel>('matches')
 const expLimit = ref(200)
 const noLimit = ref(false)
@@ -142,69 +135,28 @@ const downloading = ref(false)
 const matchCount = ref<number | null>(null)
 
 async function loadCount() {
-  if (!expPlayer.value) { matchCount.value = null; return }
+  if (!player.value) { matchCount.value = null; return }
   try {
     matchCount.value = await fetchExportCount(currentFilters())
   } catch { /* ignore */ }
 }
 
-async function loadOpponentsAndDecks() {
-  if (!expPlayer.value) {
-    opponentList.value = []
-    deckList.value = []
-    opponentDeckList.value = []
-    return
-  }
-  try {
-    const [opps, decks] = await Promise.all([
-      fetchOpponents(expPlayer.value),
-      fetchPlayerDecks(expPlayer.value),
-    ])
-    opponentList.value = opps
-    deckList.value = decks
-  } catch { /* ignore */ }
-}
-
-async function loadOpponentDecks() {
-  if (!expPlayer.value) { opponentDeckList.value = []; return }
-  try {
-    opponentDeckList.value = await fetchOpponentDecks(
-      expPlayer.value,
-      expOpponent.value || undefined,
-    )
-  } catch { /* ignore */ }
-}
-
-watch(expPlayer, () => {
-  expOpponent.value = ''
-  expDeck.value = ''
-  expOpponentDeck.value = ''
-  loadOpponentsAndDecks()
-  loadCount()
-})
-
-watch(expOpponent, () => {
-  expOpponentDeck.value = ''
-  loadOpponentDecks()
-  loadCount()
-})
-
-watch([expDeck, expOpponentDeck, expFormat, expDateFrom, expDateTo], loadCount)
+watch([player, opponent, deck, opponentDeck, format, dateFrom, dateTo], loadCount)
 
 function currentFilters() {
   return {
-    player: expPlayer.value,
-    opponent: expOpponent.value || undefined,
-    deck: expDeck.value || undefined,
-    opponent_deck: expOpponentDeck.value || undefined,
-    format: expFormat.value || undefined,
-    date_from: expDateFrom.value || undefined,
-    date_to: expDateTo.value || undefined,
+    player: player.value,
+    opponent: opponent.value || undefined,
+    deck: deck.value || undefined,
+    opponent_deck: opponentDeck.value || undefined,
+    format: format.value || undefined,
+    date_from: dateFrom.value || undefined,
+    date_to: dateTo.value || undefined,
   }
 }
 
 async function runExport() {
-  if (!expPlayer.value) return
+  if (!player.value) return
   downloading.value = true
   try {
     const count = await fetchExportCount(currentFilters())
@@ -256,7 +208,7 @@ async function doDownload() {
       + String(now.getMinutes()).padStart(2, '0')
       + String(now.getSeconds()).padStart(2, '0')
     a.href = url
-    a.download = `scry_export_${expPlayer.value}_${dateStr}.md`
+    a.download = `scry_export_${player.value}_${dateStr}.md`
     a.click()
     URL.revokeObjectURL(url)
   } catch (e) {
@@ -267,18 +219,8 @@ async function doDownload() {
 }
 
 onMounted(async () => {
-  try {
-    const [players, formats, settings] = await Promise.all([fetchPlayers(), fetchFormats(), fetchSettings()])
-    playerList.value = players
-    formatList.value = formats
-    if (players.length > 0) {
-      const preferred = settings.default_player
-      expPlayer.value = (preferred && players.includes(preferred)) ? preferred : players[0]
-      // watch が発火するので loadCount は不要
-    }
-  } catch {
-    showError('初期データの取得に失敗しました')
-  }
+  const playerSet = await init()
+  if (!playerSet) loadCount()
 })
 </script>
 

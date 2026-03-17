@@ -8,46 +8,46 @@
     <div class="match-list__filters">
       <div class="filter-group">
         <label class="filter-label">プレイヤー</label>
-        <select v-model="filterPlayer" class="filter-select">
+        <select v-model="playerModel" class="filter-select">
           <option value="">すべて</option>
           <option v-for="p in playerList" :key="p" :value="p">{{ p }}</option>
         </select>
       </div>
       <div class="filter-group">
         <label class="filter-label">対戦相手</label>
-        <select v-model="filterOpponent" class="filter-select">
+        <select v-model="opponentModel" class="filter-select">
           <option value="">すべて</option>
           <option v-for="o in opponentList" :key="o" :value="o">{{ o }}</option>
         </select>
       </div>
       <div class="filter-group">
         <label class="filter-label">デッキ</label>
-        <select v-model="filterDeck" class="filter-select">
+        <select v-model="deck" class="filter-select">
           <option value="">すべて</option>
           <option v-for="d in deckList" :key="d" :value="d">{{ d }}</option>
         </select>
       </div>
       <div class="filter-group">
         <label class="filter-label">相手デッキ</label>
-        <select v-model="filterOpponentDeck" class="filter-select" :disabled="!filterPlayer">
+        <select v-model="opponentDeck" class="filter-select" :disabled="!player">
           <option value="">すべて</option>
           <option v-for="d in opponentDeckList" :key="d" :value="d">{{ d }}</option>
         </select>
       </div>
       <div class="filter-group">
         <label class="filter-label">フォーマット</label>
-        <select v-model="filterFormat" class="filter-select">
+        <select v-model="formatModel" class="filter-select">
           <option value="">すべて</option>
           <option v-for="f in formatList" :key="f" :value="f">{{ f }}</option>
         </select>
       </div>
       <div class="filter-group">
         <label class="filter-label">対戦日時（開始）</label>
-        <input type="date" v-model="filterDateFrom" class="filter-date" />
+        <input type="date" v-model="dateFrom" class="filter-date" />
       </div>
       <div class="filter-group">
         <label class="filter-label">対戦日時（終了）</label>
-        <input type="date" v-model="filterDateTo" class="filter-date" />
+        <input type="date" v-model="dateTo" class="filter-date" />
       </div>
     </div>
 
@@ -103,44 +103,36 @@ import { ref, computed, watch, onMounted, onActivated } from 'vue'
 
 defineOptions({ name: 'MatchListView' })
 import { fetchMatches, type MatchSummary } from '../api/matches'
-import { fetchPlayers, fetchOpponents, fetchPlayerDecks, fetchOpponentDecks, fetchFormats } from '../api/stats'
 import { useToast } from '../composables/useToast'
+import { useFilterState } from '../composables/useFilterState'
 
 const { showError } = useToast()
+const {
+  playerModel, opponentModel, formatModel,
+  deck, opponentDeck, dateFrom, dateTo,
+  player, opponent, format,
+  playerList, opponentList, deckList, opponentDeckList, formatList,
+  init,
+} = useFilterState()
 
 const matches = ref<MatchSummary[]>([])
 const total = ref(0)
 const page = ref(1)
 const loading = ref(false)
 
-const playerList = ref<string[]>([])
-const opponentList = ref<string[]>([])
-const deckList = ref<string[]>([])
-const opponentDeckList = ref<string[]>([])
-const formatList = ref<string[]>([])
-
-const filterPlayer = ref('')
-const filterOpponent = ref('')
-const filterDeck = ref('')
-const filterOpponentDeck = ref('')
-const filterFormat = ref('')
-const filterDateFrom = ref('')
-const filterDateTo = ref('')
-
 const totalPages = computed(() => Math.ceil(total.value / 10))
-
 
 async function load() {
   loading.value = true
   try {
     const res = await fetchMatches(10, (page.value - 1) * 10, {
-      player: filterPlayer.value || undefined,
-      opponent: filterOpponent.value || undefined,
-      deck: filterDeck.value || undefined,
-      opponent_deck: filterOpponentDeck.value || undefined,
-      format: filterFormat.value || undefined,
-      date_from: filterDateFrom.value || undefined,
-      date_to: filterDateTo.value || undefined,
+      player: player.value || undefined,
+      opponent: opponent.value || undefined,
+      deck: deck.value || undefined,
+      opponent_deck: opponentDeck.value || undefined,
+      format: format.value || undefined,
+      date_from: dateFrom.value || undefined,
+      date_to: dateTo.value || undefined,
     })
     matches.value = res.matches
     total.value = res.total
@@ -151,77 +143,12 @@ async function load() {
   }
 }
 
-async function loadDecks() {
-  if (!filterPlayer.value) { deckList.value = []; return }
-  try {
-    deckList.value = await fetchPlayerDecks(filterPlayer.value, filterFormat.value || undefined)
-  } catch {
-    // 失敗しても無視
-  }
-}
-
-async function loadOpponents() {
-  if (!filterPlayer.value) {
-    opponentList.value = []
-    return
-  }
-  try {
-    opponentList.value = await fetchOpponents(filterPlayer.value)
-  } catch {
-    // 失敗しても無視
-  }
-}
-
-async function loadOpponentDecks() {
-  if (!filterPlayer.value) {
-    opponentDeckList.value = []
-    return
-  }
-  try {
-    opponentDeckList.value = await fetchOpponentDecks(
-      filterPlayer.value,
-      filterOpponent.value || undefined,
-      filterFormat.value || undefined,
-    )
-  } catch {
-    // 失敗しても無視
-  }
-}
-
-watch(filterPlayer, () => {
-  filterOpponent.value = ''
-  filterDeck.value = ''
-  filterOpponentDeck.value = ''
-  page.value = 1
-  loadOpponents()
-  loadDecks()
-  loadOpponentDecks()
-  load()
-})
-
-watch(filterOpponent, () => {
-  filterOpponentDeck.value = ''
-  loadOpponentDecks()
-  page.value = 1
-  load()
-})
-
-watch(filterFormat, () => {
-  filterDeck.value = ''
-  filterOpponentDeck.value = ''
-  loadDecks()
-  loadOpponentDecks()
-  page.value = 1
-  load()
-})
-
-watch([filterDeck, filterOpponentDeck, filterDateFrom, filterDateTo], () => {
-  page.value = 1
-  load()
-})
+watch(
+  [player, opponent, deck, opponentDeck, format, dateFrom, dateTo],
+  () => { page.value = 1; load() },
+)
 
 watch(page, load)
-
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString('ja-JP', {
@@ -233,19 +160,13 @@ function formatDate(iso: string): string {
   })
 }
 
-async function initData() {
-  try {
-    const [players, formats] = await Promise.all([fetchPlayers(), fetchFormats()])
-    playerList.value = players
-    formatList.value = formats
-  } catch {
-    showError('フィルター情報の取得に失敗しました')
-  }
-  load()
+async function activate() {
+  const playerSet = await init()
+  if (!playerSet) load()
 }
 
-onMounted(initData)
-onActivated(initData)
+onMounted(activate)
+onActivated(activate)
 </script>
 
 <style scoped>

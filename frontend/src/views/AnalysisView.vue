@@ -26,8 +26,8 @@
         <div class="analysis__toolbar">
           <div class="analysis__toolbar-group">
             <label class="analysis__toolbar-label">プレイヤー</label>
-            <select v-model="selectedPlayer" class="analysis__select">
-              <option v-for="p in players" :key="p" :value="p">{{ p }}</option>
+            <select v-model="playerModel" class="analysis__select">
+              <option v-for="p in playerList" :key="p" :value="p">{{ p }}</option>
             </select>
           </div>
           <div class="analysis__toolbar-group">
@@ -57,39 +57,39 @@
         <div class="analysis__filters">
           <div class="analysis__toolbar-group">
             <label class="analysis__toolbar-label">対戦相手</label>
-            <select v-model="filterOpponent" class="analysis__select">
+            <select v-model="opponentModel" class="analysis__select">
               <option value="">（すべて）</option>
-              <option v-for="o in opponents" :key="o" :value="o">{{ o }}</option>
+              <option v-for="o in opponentList" :key="o" :value="o">{{ o }}</option>
             </select>
           </div>
           <div class="analysis__toolbar-group">
             <label class="analysis__toolbar-label">使用デッキ</label>
-            <select v-model="filterDeck" class="analysis__select">
+            <select v-model="deck" class="analysis__select">
               <option value="">（すべて）</option>
-              <option v-for="d in playerDecks" :key="d" :value="d">{{ d }}</option>
+              <option v-for="d in deckList" :key="d" :value="d">{{ d }}</option>
             </select>
           </div>
           <div class="analysis__toolbar-group">
             <label class="analysis__toolbar-label">相手デッキ</label>
-            <select v-model="filterOpponentDeck" class="analysis__select">
+            <select v-model="opponentDeck" class="analysis__select">
               <option value="">（すべて）</option>
-              <option v-for="d in opponentDecks" :key="d" :value="d">{{ d }}</option>
+              <option v-for="d in opponentDeckList" :key="d" :value="d">{{ d }}</option>
             </select>
           </div>
           <div class="analysis__toolbar-group">
             <label class="analysis__toolbar-label">フォーマット</label>
-            <select v-model="filterFormat" class="analysis__select">
+            <select v-model="formatModel" class="analysis__select">
               <option value="">（すべて）</option>
-              <option v-for="f in formats" :key="f" :value="f">{{ f }}</option>
+              <option v-for="f in formatList" :key="f" :value="f">{{ f }}</option>
             </select>
           </div>
           <div class="analysis__toolbar-group">
             <label class="analysis__toolbar-label">対戦日（開始）</label>
-            <input v-model="filterDateFrom" type="date" class="analysis__select" />
+            <input v-model="dateFrom" type="date" class="analysis__select" />
           </div>
           <div class="analysis__toolbar-group">
             <label class="analysis__toolbar-label">対戦日（終了）</label>
-            <input v-model="filterDateTo" type="date" class="analysis__select" />
+            <input v-model="dateTo" type="date" class="analysis__select" />
           </div>
           <button class="analysis__btn" @click="resetFilters">リセット</button>
         </div>
@@ -161,7 +161,7 @@ import { ref, computed, watch, nextTick, onMounted, onActivated } from 'vue'
 defineOptions({ name: 'AnalysisView' })
 import { useToast } from '../composables/useToast'
 import { fetchSettings } from '../api/settings'
-import { fetchPlayers, fetchOpponents, fetchPlayerDecks, fetchOpponentDecks, fetchFormats } from '../api/stats'
+import { useFilterState } from '../composables/useFilterState'
 import {
   fetchSessions, fetchSessionDetail, deleteSession,
   fetchPromptTemplates, fetchQuestionSets, streamChat,
@@ -172,11 +172,16 @@ import ChatMessage from '../components/ChatMessage.vue'
 import SessionBar from '../components/SessionBar.vue'
 
 const { showError } = useToast()
+const {
+  playerModel, opponentModel, formatModel,
+  deck, opponentDeck, dateFrom, dateTo,
+  player, opponent, format,
+  playerList, opponentList, deckList, opponentDeckList, formatList,
+  init, resetFilters,
+} = useFilterState()
 
 // ── 状態 ─────────────────────────────────────────────────────────────────
 const apiKeyConfigured = ref<boolean | null>(null)
-const players = ref<string[]>([])
-const selectedPlayer = ref('')
 const promptTemplates = ref<PromptTemplate[]>([])
 const selectedTemplateId = ref<number | null>(null)
 const questionSets = ref<QuestionSet[]>([])
@@ -191,46 +196,6 @@ const streaming = ref(false)
 const streamingContent = ref('')
 const chatRef = ref<HTMLElement | null>(null)
 let abortController: AbortController | null = null
-
-// ── フィルター ────────────────────────────────────────────────────────────
-const filterOpponent = ref('')
-const filterDeck = ref('')
-const filterOpponentDeck = ref('')
-const filterFormat = ref('')
-const filterDateFrom = ref('')
-const filterDateTo = ref('')
-const opponents = ref<string[]>([])
-const playerDecks = ref<string[]>([])
-const opponentDecks = ref<string[]>([])
-const formats = ref<string[]>([])
-
-
-function resetFilters() {
-  filterOpponent.value = ''
-  filterDeck.value = ''
-  filterOpponentDeck.value = ''
-  filterFormat.value = ''
-  filterDateFrom.value = ''
-  filterDateTo.value = ''
-}
-
-async function loadFilterOptions() {
-  if (!selectedPlayer.value) return
-  try {
-    const [opps, pDecks, oppDecks, fmts] = await Promise.all([
-      fetchOpponents(selectedPlayer.value),
-      fetchPlayerDecks(selectedPlayer.value),
-      fetchOpponentDecks(selectedPlayer.value),
-      fetchFormats(),
-    ])
-    opponents.value = opps
-    playerDecks.value = pDecks
-    opponentDecks.value = oppDecks
-    formats.value = fmts
-  } catch {
-    showError('フィルター選択肢の取得に失敗しました')
-  }
-}
 
 const currentQuestionItems = computed(() => {
   if (selectedSetId.value === null) return []
@@ -257,13 +222,11 @@ async function initData() {
     apiKeyConfigured.value = settings.api_key_configured
     if (!settings.api_key_configured) return
 
-    const [playerList, templates, qSets] = await Promise.all([
-      fetchPlayers(),
+    const [templates, qSets] = await Promise.all([
       fetchPromptTemplates(),
       fetchQuestionSets(),
     ])
 
-    players.value = playerList
     promptTemplates.value = templates
     questionSets.value = qSets
 
@@ -274,13 +237,11 @@ async function initData() {
       const defaultSet = qSets.find(s => s.is_default) ?? qSets[0]
       if (defaultSet) selectedSetId.value = defaultSet.id
 
-      if (playerList.length > 0) {
-        const preferred = settings.default_player
-        selectedPlayer.value = (preferred && playerList.includes(preferred)) ? preferred : playerList[0]
-        // watch(selectedPlayer) が loadSessions + loadFilterOptions + resetFilters を呼ぶ
-      }
+      const playerSet = await init()
+      // playerSet=true なら watch(player) が loadSessions を呼ぶ
+      if (!playerSet && player.value) await loadSessions()
       _initialized.value = true
-    } else if (selectedPlayer.value) {
+    } else if (player.value) {
       await loadSessions()
     }
   } catch {
@@ -294,7 +255,7 @@ onActivated(initData)
 // ── セッション管理 ────────────────────────────────────────────────────────
 async function loadSessions() {
   try {
-    sessions.value = await fetchSessions(selectedPlayer.value)
+    sessions.value = await fetchSessions(player.value)
   } catch {
     showError('セッション一覧の取得に失敗しました')
   }
@@ -307,7 +268,7 @@ async function startNewSession() {
   streamingContent.value = ''
   currentSessionId.value = null
   isReadOnly.value = false
-  readyToStart.value = !!selectedPlayer.value
+  readyToStart.value = !!player.value
 }
 
 async function startChat() {
@@ -325,12 +286,12 @@ async function selectSession(id: number) {
   try {
     const detail = await fetchSessionDetail(id)
     messages.value = detail.messages.map(m => ({ role: m.role, content: m.content }))
-    filterOpponent.value = detail.filter_opponent ?? ''
-    filterDeck.value = detail.filter_deck ?? ''
-    filterOpponentDeck.value = detail.filter_opponent_deck ?? ''
-    filterFormat.value = detail.filter_format ?? ''
-    filterDateFrom.value = detail.filter_date_from ?? ''
-    filterDateTo.value = detail.filter_date_to ?? ''
+    opponent.value = detail.filter_opponent ?? ''
+    deck.value = detail.filter_deck ?? ''
+    opponentDeck.value = detail.filter_opponent_deck ?? ''
+    format.value = detail.filter_format ?? ''
+    dateFrom.value = detail.filter_date_from ?? ''
+    dateTo.value = detail.filter_date_to ?? ''
   } catch {
     showError('セッションの取得に失敗しました')
   }
@@ -365,17 +326,17 @@ async function sendMessage(text: string, isGreeting = false) {
 
   await streamChat(
     {
-      player: selectedPlayer.value,
+      player: player.value,
       prompt_template_id: selectedTemplateId.value,
       session_id: currentSessionId.value,
       message: text,
       history: history.length > 0 ? history : undefined,
-      opponent: filterOpponent.value || null,
-      deck: filterDeck.value || null,
-      opponent_deck: filterOpponentDeck.value || null,
-      format: filterFormat.value || null,
-      date_from: filterDateFrom.value || null,
-      date_to: filterDateTo.value || null,
+      opponent: opponent.value || null,
+      deck: deck.value || null,
+      opponent_deck: opponentDeck.value || null,
+      format: format.value || null,
+      date_from: dateFrom.value || null,
+      date_to: dateTo.value || null,
     },
     {
       onDelta(delta) {
@@ -412,20 +373,8 @@ function onEnter() {
 }
 
 // ── watch ─────────────────────────────────────────────────────────────────
-watch(selectedPlayer, async () => {
-  resetFilters()
-  await Promise.all([loadSessions(), loadFilterOptions()])
-})
-
-watch(filterOpponent, async () => {
-  filterOpponentDeck.value = ''
-  if (!selectedPlayer.value) return
-  try {
-    opponentDecks.value = await fetchOpponentDecks(
-      selectedPlayer.value,
-      filterOpponent.value || undefined,
-    )
-  } catch { /* ignore */ }
+watch(player, async () => {
+  await loadSessions()
 })
 </script>
 
