@@ -381,6 +381,8 @@ async def import_deck_definitions(
 @router.post("/decks/apply-definitions")
 def apply_definitions(
     overwrite: bool = False,
+    target_deck: str | None = None,
+    target_format: str | None = None,
     db: Session = Depends(get_db),
 ):
     """
@@ -388,6 +390,8 @@ def apply_definitions(
 
     - overwrite=false: deck_name が NULL の MatchPlayer のみ対象
     - overwrite=true : 全 MatchPlayer を対象（既存のデッキ名も上書き）
+    - target_deck 指定時: そのデッキ名の MatchPlayer のみ対象（常に上書き）
+    - target_format 指定時: そのフォーマットの試合のみ対象
     """
     from sqlalchemy.orm import selectinload
     from models.core import Game, Action
@@ -400,8 +404,16 @@ def apply_definitions(
         .selectinload(Match.games)
         .selectinload(Game.actions)
     )
-    if not overwrite:
+
+    if target_deck is not None:
+        # 指定デッキ名の試合のみ対象（常に上書き）
+        q = q.filter(MatchPlayer.deck_name == target_deck)
+    elif not overwrite:
         q = q.filter(MatchPlayer.deck_name.is_(None))
+
+    if target_format is not None:
+        q = q.join(Match, Match.id == MatchPlayer.match_id).filter(Match.format == target_format)
+
     match_players = q.all()
 
     updated = 0

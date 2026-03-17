@@ -94,6 +94,26 @@
         </div>
         <p class="deck-def__apply-note">「デッキ名未設定」は deck_name が空の試合のみを対象にします。「すべての試合」は既存のデッキ名も上書きします。</p>
       </div>
+      <div class="deck-def__apply-divider"></div>
+      <div class="deck-def__bulk-form">
+        <div class="deck-def__field">
+          <label class="deck-def__label">フォーマット（任意）</label>
+          <select v-model="applyTargetFormat" class="deck-def__select">
+            <option value="">問わず</option>
+            <option v-for="f in ALL_FORMATS" :key="f" :value="f">{{ f }}</option>
+          </select>
+        </div>
+        <div class="deck-def__field deck-def__field--grow">
+          <label class="deck-def__label">デッキ名 *</label>
+          <input v-model="applyTargetDeck" class="deck-def__input" placeholder="例: Spirits" />
+        </div>
+        <button
+          class="deck-def__btn deck-def__btn--primary"
+          :disabled="applying || !applyTargetDeck.trim()"
+          @click="runApplyTargetDeck"
+        >{{ applying ? '適用中...' : '指定デッキに適用（上書き）' }}</button>
+      </div>
+      <p class="deck-def__apply-note">指定したデッキ名の試合を対象に、デッキ定義を再判定して上書きします。</p>
     </div>
 
     <!-- Claude 生成 -->
@@ -303,6 +323,33 @@ async function onConfirm() {
 
 // apply definitions
 const applying = ref(false)
+const applyTargetDeck = ref('')
+const applyTargetFormat = ref('')
+
+function runApplyTargetDeck() {
+  const deck = applyTargetDeck.value.trim()
+  if (!deck) return
+  const formatLabel = applyTargetFormat.value ? `フォーマット「${applyTargetFormat.value}」の` : ''
+  showConfirm(
+    `${formatLabel}デッキ「${deck}」の試合にデッキ定義を再適用します。既存のデッキ名も上書きされます。よろしいですか？`,
+    '適用',
+    async () => {
+      applying.value = true
+      try {
+        const res = await applyDeckDefinitions(
+          true,
+          deck,
+          applyTargetFormat.value || undefined,
+        )
+        showSuccess(`${res.updated} 件更新しました（スキップ: ${res.skipped} 件）`)
+      } catch (e) {
+        showError(e instanceof Error ? e.message : '適用に失敗しました')
+      } finally {
+        applying.value = false
+      }
+    },
+  )
+}
 
 function runApply(overwrite: boolean) {
   const message = overwrite
@@ -589,6 +636,12 @@ onMounted(async () => {
   font-size: 11px;
   color: #7a6a55;
   margin: 0;
+  width: 100%;
+}
+
+.deck-def__apply-divider {
+  border-top: 1px solid #e0d8c8;
+  margin: 12px 0;
   width: 100%;
 }
 
