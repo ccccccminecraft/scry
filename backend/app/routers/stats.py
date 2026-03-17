@@ -58,6 +58,7 @@ def get_opponents(
 def get_opponent_decks(
     player: str = Query(...),
     opponent: str | None = Query(default=None),
+    format: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
     """指定プレイヤーの対戦相手が使用したデッキ一覧を返す。"""
@@ -68,6 +69,7 @@ def get_opponent_decks(
     )
     q = (
         db.query(MatchPlayer.deck_name)
+        .join(Match, Match.id == MatchPlayer.match_id)
         .filter(
             MatchPlayer.match_id.in_(player_matches),
             MatchPlayer.player_name != player,
@@ -76,6 +78,8 @@ def get_opponent_decks(
     )
     if opponent:
         q = q.filter(MatchPlayer.player_name == opponent)
+    if format:
+        q = q.filter(Match.format == format)
     rows = q.distinct().order_by(MatchPlayer.deck_name).all()
     return {"opponent_decks": [r[0] for r in rows]}
 
@@ -83,19 +87,21 @@ def get_opponent_decks(
 @router.get("/stats/player-decks")
 def get_player_decks(
     player: str = Query(...),
+    format: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
     """指定プレイヤー自身が使用したデッキ一覧を返す。"""
-    rows = (
+    q = (
         db.query(MatchPlayer.deck_name)
+        .join(Match, Match.id == MatchPlayer.match_id)
         .filter(
             MatchPlayer.player_name == player,
             MatchPlayer.deck_name.isnot(None),
         )
-        .distinct()
-        .order_by(MatchPlayer.deck_name)
-        .all()
     )
+    if format:
+        q = q.filter(Match.format == format)
+    rows = q.distinct().order_by(MatchPlayer.deck_name).all()
     return {"player_decks": [r[0] for r in rows]}
 
 

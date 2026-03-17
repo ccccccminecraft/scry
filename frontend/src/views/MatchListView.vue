@@ -154,7 +154,7 @@ async function load() {
 async function loadDecks() {
   if (!filterPlayer.value) { deckList.value = []; return }
   try {
-    deckList.value = await fetchPlayerDecks(filterPlayer.value)
+    deckList.value = await fetchPlayerDecks(filterPlayer.value, filterFormat.value || undefined)
   } catch {
     // 失敗しても無視
   }
@@ -181,6 +181,7 @@ async function loadOpponentDecks() {
     opponentDeckList.value = await fetchOpponentDecks(
       filterPlayer.value,
       filterOpponent.value || undefined,
+      filterFormat.value || undefined,
     )
   } catch {
     // 失敗しても無視
@@ -205,7 +206,16 @@ watch(filterOpponent, () => {
   load()
 })
 
-watch([filterDeck, filterOpponentDeck, filterFormat, filterDateFrom, filterDateTo], () => {
+watch(filterFormat, () => {
+  filterDeck.value = ''
+  filterOpponentDeck.value = ''
+  loadDecks()
+  loadOpponentDecks()
+  page.value = 1
+  load()
+})
+
+watch([filterDeck, filterOpponentDeck, filterDateFrom, filterDateTo], () => {
   page.value = 1
   load()
 })

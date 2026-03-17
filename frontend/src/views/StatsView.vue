@@ -287,7 +287,7 @@ async function loadOpponents() {
 async function loadDecks() {
   if (!selectedPlayer.value) { deckList.value = []; return }
   try {
-    deckList.value = await fetchPlayerDecks(selectedPlayer.value)
+    deckList.value = await fetchPlayerDecks(selectedPlayer.value, selectedFormat.value || undefined)
   } catch {
     // 失敗しても無視
   }
@@ -302,6 +302,7 @@ async function loadOpponentDecks() {
     opponentDeckList.value = await fetchOpponentDecks(
       selectedPlayer.value,
       selectedOpponent.value || undefined,
+      selectedFormat.value || undefined,
     )
   } catch {
     // 失敗しても無視
@@ -324,7 +325,15 @@ watch(selectedOpponent, () => {
   loadAll()
 })
 
-watch([selectedDeck, selectedOpponentDeck, selectedFormat, dateFrom, dateTo], () => {
+watch(selectedFormat, () => {
+  selectedDeck.value = ''
+  selectedOpponentDeck.value = ''
+  loadDecks()
+  loadOpponentDecks()
+  loadAll()
+})
+
+watch([selectedDeck, selectedOpponentDeck, dateFrom, dateTo], () => {
   loadAll()
 })
 

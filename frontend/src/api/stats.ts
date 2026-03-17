@@ -74,16 +74,16 @@ export async function fetchOpponents(player: string): Promise<string[]> {
   return res.data.opponents
 }
 
-export async function fetchPlayerDecks(player: string): Promise<string[]> {
+export async function fetchPlayerDecks(player: string, format?: string): Promise<string[]> {
   const res = await client.get<{ player_decks: string[] }>('/api/stats/player-decks', {
-    params: { player },
+    params: { player, format },
   })
   return res.data.player_decks
 }
 
-export async function fetchOpponentDecks(player: string, opponent?: string): Promise<string[]> {
+export async function fetchOpponentDecks(player: string, opponent?: string, format?: string): Promise<string[]> {
   const res = await client.get<{ opponent_decks: string[] }>('/api/stats/opponent-decks', {
-    params: { player, opponent },
+    params: { player, opponent, format },
   })
   return res.data.opponent_decks
 }
