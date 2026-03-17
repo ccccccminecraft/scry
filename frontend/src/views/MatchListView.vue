@@ -74,11 +74,11 @@
             >
               <td>{{ formatDate(m.date) }}</td>
               <td>
-                <span class="match-list__player">{{ m.players[0] }}</span>
-                <span v-if="m.decks[0]" class="match-list__deck">{{ m.decks[0] }}</span>
+                <span class="match-list__player">{{ orderedPlayers(m)[0] }}</span>
+                <span v-if="orderedDecks(m)[0]" class="match-list__deck">{{ orderedDecks(m)[0] }}</span>
                 <span class="match-list__vs">vs</span>
-                <span class="match-list__player">{{ m.players[1] }}</span>
-                <span v-if="m.decks[1]" class="match-list__deck">{{ m.decks[1] }}</span>
+                <span class="match-list__player">{{ orderedPlayers(m)[1] }}</span>
+                <span v-if="orderedDecks(m)[1]" class="match-list__deck">{{ orderedDecks(m)[1] }}</span>
               </td>
               <td>{{ m.match_winner }}</td>
               <td>{{ m.game_count }}</td>
@@ -151,6 +151,20 @@ watch(
 )
 
 watch(page, load)
+
+function orderedPlayers(m: MatchSummary): string[] {
+  if (player.value && m.players[1] === player.value) {
+    return [m.players[1], m.players[0]]
+  }
+  return m.players
+}
+
+function orderedDecks(m: MatchSummary): (string | null)[] {
+  if (player.value && m.players[1] === player.value) {
+    return [m.decks[1], m.decks[0]]
+  }
+  return m.decks
+}
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString('ja-JP', {
