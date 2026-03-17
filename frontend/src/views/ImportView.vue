@@ -1,5 +1,13 @@
 <template>
   <div class="import">
+    <ConfirmDialog
+      :visible="confirmVisible"
+      :message="confirmMessage"
+      confirm-label="実行"
+      @confirm="onConfirm"
+      @cancel="confirmVisible = false"
+    />
+
     <div class="import__header">
       <h1 class="import__title">ログのインポート</h1>
       <button v-if="state !== 'idle'" class="btn-back" @click="reset">← 戻る</button>
@@ -24,7 +32,7 @@
             <button
               class="btn btn--primary"
               :disabled="quickRunning"
-              @click="runQuickImport"
+              @click="confirmQuickImport"
             >
               {{ quickRunning ? 'スキャン中...' : '⚡ クイックインポート' }}
             </button>
@@ -98,7 +106,7 @@
         <button
           class="btn btn--primary"
           :disabled="checkedCount === 0"
-          @click="startImport"
+          @click="confirmStartImport"
         >
           選択した {{ checkedCount }} 件をインポート
         </button>
@@ -159,8 +167,26 @@ import { importSingleFile, type ImportResult } from '../api/import'
 import { fetchSettings, updateSettings } from '../api/settings'
 import { fetchLatestMatchDate } from '../api/matches'
 import { useToast } from '../composables/useToast'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 
 const { showError, showSuccess } = useToast()
+
+// 確認ダイアログ
+const confirmVisible = ref(false)
+const confirmMessage = ref('')
+const pendingAction = ref<(() => void) | null>(null)
+
+function showConfirm(message: string, action: () => void) {
+  confirmMessage.value = message
+  pendingAction.value = action
+  confirmVisible.value = true
+}
+
+function onConfirm() {
+  confirmVisible.value = false
+  pendingAction.value?.()
+  pendingAction.value = null
+}
 
 type State = 'idle' | 'scanning' | 'scan_result' | 'importing' | 'batch_result'
 
@@ -252,6 +278,13 @@ async function saveQuickFolder(path: string) {
   }
 }
 
+function confirmQuickImport() {
+  showConfirm(
+    'クイックインポートを実行します。前回インポート以降の新しいファイルをすべて取り込みます。よろしいですか？',
+    runQuickImport,
+  )
+}
+
 async function runQuickImport() {
   if (!quickFolder.value || quickRunning.value) return
   quickRunning.value = true
@@ -337,6 +370,15 @@ async function scanFolder() {
     showError(e instanceof Error ? e.message : 'フォルダのスキャンに失敗しました')
     state.value = 'idle'
   }
+}
+
+function confirmStartImport() {
+  const count = checkedCount.value
+  if (count === 0) return
+  showConfirm(
+    `選択した ${count} 件をインポートします。よろしいですか？`,
+    startImport,
+  )
 }
 
 async function startImport() {

@@ -2,6 +2,14 @@
   <div class="deck-def">
     <h1 class="deck-def__title">デッキ定義管理</h1>
 
+    <ConfirmDialog
+      :visible="confirmVisible"
+      :message="confirmMessage"
+      confirm-label="適用"
+      @confirm="onConfirmApply"
+      @cancel="confirmVisible = false"
+    />
+
     <!-- 一括上書きパネル -->
     <div class="deck-def__section">
       <div class="deck-def__section-title">デッキ名一括上書き</div>
@@ -235,6 +243,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 import { useToast } from '../composables/useToast'
 import {
   fetchDeckDefinitions, createDeckDefinition, updateDeckDefinition,
@@ -265,15 +274,23 @@ const cardText = ref('')
 
 // apply definitions
 const applying = ref(false)
+const confirmVisible = ref(false)
+const confirmMessage = ref('')
+const confirmOverwrite = ref(false)
 
-async function runApply(overwrite: boolean) {
-  const msg = overwrite
+function runApply(overwrite: boolean) {
+  confirmOverwrite.value = overwrite
+  confirmMessage.value = overwrite
     ? 'すべての試合にデッキ定義を適用します。既存のデッキ名も上書きされます。よろしいですか？'
     : 'デッキ名が未設定の試合にデッキ定義を適用します。よろしいですか？'
-  if (!confirm(msg)) return
+  confirmVisible.value = true
+}
+
+async function onConfirmApply() {
+  confirmVisible.value = false
   applying.value = true
   try {
-    const res = await applyDeckDefinitions(overwrite)
+    const res = await applyDeckDefinitions(confirmOverwrite.value)
     showSuccess(`${res.updated} 件更新しました（スキップ: ${res.skipped} 件）`)
   } catch (e) {
     showError(e instanceof Error ? e.message : '適用に失敗しました')

@@ -91,25 +91,23 @@
       </div>
     </div>
 
-    <!-- 確認メッセージ -->
-    <div v-if="confirmMsg" class="ai-export__confirm">
-      <p class="ai-export__confirm-msg">⚠ {{ confirmMsg }}</p>
-      <div class="ai-export__confirm-btns">
-        <button class="ai-export__btn" @click="confirmMsg = ''">キャンセル</button>
-        <button class="ai-export__btn ai-export__btn--primary" @click="confirmDownload" :disabled="downloading">エクスポート</button>
-      </div>
-    </div>
-
     <!-- ダウンロードボタン -->
     <div class="ai-export__footer">
       <button
-        v-if="!confirmMsg"
         class="ai-export__btn ai-export__btn--primary"
         :disabled="!expPlayer || downloading"
         @click="runExport"
       >{{ downloading ? '処理中…' : 'エクスポート' }}</button>
     </div>
   </div>
+
+  <ConfirmDialog
+    :visible="confirmVisible"
+    :message="confirmMessage"
+    confirmLabel="エクスポート"
+    @confirm="onConfirmExport"
+    @cancel="confirmVisible = false"
+  />
 </template>
 
 <script setup lang="ts">
@@ -118,6 +116,7 @@ import { fetchExportCount, fetchExportMarkdown, type ExportDetailLevel } from '.
 import { fetchPlayers, fetchOpponents, fetchPlayerDecks, fetchOpponentDecks, fetchFormats } from '../api/stats'
 import { fetchSettings } from '../api/settings'
 import { useToast } from '../composables/useToast'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 
 const { showError } = useToast()
 
@@ -137,7 +136,8 @@ const expDateTo = ref('')
 const expDetailLevel = ref<ExportDetailLevel>('matches')
 const expLimit = ref(200)
 const noLimit = ref(false)
-const confirmMsg = ref('')
+const confirmVisible = ref(false)
+const confirmMessage = ref('')
 const downloading = ref(false)
 const matchCount = ref<number | null>(null)
 
@@ -206,19 +206,21 @@ function currentFilters() {
 async function runExport() {
   if (!expPlayer.value) return
   downloading.value = true
-  confirmMsg.value = ''
   try {
     const count = await fetchExportCount(currentFilters())
     const outputCount = noLimit.value ? count : Math.min(count, expLimit.value)
     const warnings: string[] = []
-    if (!noLimit.value && count > expLimit.value) {
+    if (noLimit.value) {
+      warnings.push(`${count} 件全件をエクスポートします。`)
+    } else if (count > expLimit.value) {
       warnings.push(`${count} 件中直近 ${expLimit.value} 件をエクスポートします。`)
     }
     if (expDetailLevel.value === 'actions' && outputCount > 50) {
       warnings.push('アクション詳細を含むためファイルサイズが大きくなる可能性があります。')
     }
     if (warnings.length > 0) {
-      confirmMsg.value = warnings.join(' ') + ' 続けますか？'
+      confirmMessage.value = warnings.join(' ') + ' 続けますか？'
+      confirmVisible.value = true
       downloading.value = false
       return
     }
@@ -229,8 +231,8 @@ async function runExport() {
   }
 }
 
-async function confirmDownload() {
-  confirmMsg.value = ''
+async function onConfirmExport() {
+  confirmVisible.value = false
   downloading.value = true
   await doDownload()
 }
@@ -402,26 +404,6 @@ onMounted(async () => {
   cursor: pointer;
 }
 
-.ai-export__confirm {
-  background: #fff8e8;
-  border: 1px solid #e0c870;
-  border-radius: 6px;
-  padding: 12px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.ai-export__confirm-msg {
-  font-size: 13px;
-  color: #7a5a00;
-}
-
-.ai-export__confirm-btns {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-}
 
 .ai-export__footer {
   display: flex;
