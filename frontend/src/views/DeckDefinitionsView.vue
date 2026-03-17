@@ -267,6 +267,10 @@ const cardText = ref('')
 const applying = ref(false)
 
 async function runApply(overwrite: boolean) {
+  const msg = overwrite
+    ? 'すべての試合にデッキ定義を適用します。既存のデッキ名も上書きされます。よろしいですか？'
+    : 'デッキ名が未設定の試合にデッキ定義を適用します。よろしいですか？'
+  if (!confirm(msg)) return
   applying.value = true
   try {
     const res = await applyDeckDefinitions(overwrite)
