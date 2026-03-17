@@ -21,6 +21,7 @@
       />
 
       <div class="analysis__main">
+        <h1 class="analysis__title">AI 分析</h1>
         <!-- ツールバー -->
         <div class="analysis__toolbar">
           <div class="analysis__toolbar-group">
@@ -470,6 +471,13 @@ watch(filterOpponent, async () => {
   flex-direction: column;
   overflow: hidden;
   background: #f0ece0;
+}
+
+.analysis__title {
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #2c2416;
+  padding: 16px 16px 0;
 }
 
 /* ツールバー */
