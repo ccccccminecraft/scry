@@ -161,6 +161,7 @@ import {
   fetchStats, fetchCardStats, fetchPlayers, fetchOpponents, fetchOpponentDecks, fetchFormats,
   type StatsResponse, type CardStat,
 } from '../api/stats'
+import { fetchSettings } from '../api/settings'
 import WinRateHistoryChart from '../components/charts/WinRateHistoryChart.vue'
 import FirstSecondChart from '../components/charts/FirstSecondChart.vue'
 import DeckStatsChart from '../components/charts/DeckStatsChart.vue'
@@ -321,11 +322,12 @@ watch([selectedDeck, selectedOpponentDeck, selectedFormat, dateFrom, dateTo], ()
 
 async function initLists() {
   try {
-    const [players, formats] = await Promise.all([fetchPlayers(), fetchFormats()])
+    const [players, formats, settings] = await Promise.all([fetchPlayers(), fetchFormats(), fetchSettings()])
     playerList.value = players
     formatList.value = formats
-    if (!selectedPlayer.value && playerList.value.length > 0) {
-      selectedPlayer.value = playerList.value[0]
+    if (!selectedPlayer.value && players.length > 0) {
+      const preferred = settings.default_player
+      selectedPlayer.value = (preferred && players.includes(preferred)) ? preferred : players[0]
       // watch が発火するので loadAll/loadOpponents は不要
     } else if (selectedPlayer.value) {
       loadAll()

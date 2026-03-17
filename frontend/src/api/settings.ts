@@ -4,6 +4,7 @@ export interface SettingsResponse {
   llm_provider: string
   api_key_configured: boolean
   quick_import_folder: string | null
+  default_player: string | null
 }
 
 export async function fetchSettings(): Promise<SettingsResponse> {
@@ -15,6 +16,7 @@ export async function updateSettings(body: {
   llm_provider?: string
   api_key?: string
   quick_import_folder?: string | null
+  default_player?: string | null
 }): Promise<void> {
   await client.put('/api/settings', body)
 }

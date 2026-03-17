@@ -275,7 +275,8 @@ async function initData() {
       if (defaultSet) selectedSetId.value = defaultSet.id
 
       if (playerList.length > 0) {
-        selectedPlayer.value = playerList[0]
+        const preferred = settings.default_player
+        selectedPlayer.value = (preferred && playerList.includes(preferred)) ? preferred : playerList[0]
         // watch(selectedPlayer) が loadSessions + loadFilterOptions + resetFilters を呼ぶ
       }
       _initialized.value = true

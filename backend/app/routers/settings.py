@@ -29,16 +29,19 @@ class SettingsInput(BaseModel):
     llm_provider: str | None = None
     api_key: str | None = None
     quick_import_folder: str | None = None
+    default_player: str | None = None
 
 
 @router.get("/settings")
 def get_settings(db: Session = Depends(get_db)):
     provider = db.get(Setting, "llm_provider")
     folder = db.get(Setting, "quick_import_folder")
+    default_player = db.get(Setting, "default_player")
     return {
         "llm_provider": provider.value if provider else "claude",
         "api_key_configured": get_api_key(db) is not None,
         "quick_import_folder": folder.value if folder else None,
+        "default_player": default_player.value if default_player else None,
     }
 
 
@@ -68,6 +71,16 @@ def put_settings(body: SettingsInput, db: Session = Depends(get_db)):
             s.value = body.quick_import_folder
         else:
             db.add(Setting(key="quick_import_folder", value=body.quick_import_folder))
+
+    if "default_player" in body.model_fields_set:
+        s = db.get(Setting, "default_player")
+        if not body.default_player:
+            if s:
+                db.delete(s)
+        elif s:
+            s.value = body.default_player
+        else:
+            db.add(Setting(key="default_player", value=body.default_player))
 
     db.commit()
     return {"ok": True}

@@ -116,6 +116,7 @@
 import { ref, watch, onMounted } from 'vue'
 import { fetchExportCount, fetchExportMarkdown, type ExportDetailLevel } from '../api/matches'
 import { fetchPlayers, fetchOpponents, fetchPlayerDecks, fetchOpponentDecks, fetchFormats } from '../api/stats'
+import { fetchSettings } from '../api/settings'
 import { useToast } from '../composables/useToast'
 
 const { showError } = useToast()
@@ -265,11 +266,12 @@ async function doDownload() {
 
 onMounted(async () => {
   try {
-    const [players, formats] = await Promise.all([fetchPlayers(), fetchFormats()])
+    const [players, formats, settings] = await Promise.all([fetchPlayers(), fetchFormats(), fetchSettings()])
     playerList.value = players
     formatList.value = formats
     if (players.length > 0) {
-      expPlayer.value = players[0]
+      const preferred = settings.default_player
+      expPlayer.value = (preferred && players.includes(preferred)) ? preferred : players[0]
       // watch が発火するので loadCount は不要
     }
   } catch {

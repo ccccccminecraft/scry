@@ -3,6 +3,18 @@
     <h1 class="settings__title">設定</h1>
 
     <div class="settings__section">
+      <div class="settings__section-title">デフォルトプレイヤー</div>
+      <div class="settings__row">
+        <select v-model="defaultPlayerInput" class="settings__select">
+          <option value="">未設定</option>
+          <option v-for="p in playerList" :key="p" :value="p">{{ p }}</option>
+        </select>
+        <button class="settings__btn settings__btn--primary" @click="saveDefaultPlayer">保存</button>
+      </div>
+      <p class="settings__note">統計・AI分析・エクスポート画面を開いたときに自動で選択されるプレイヤーです。</p>
+    </div>
+
+    <div class="settings__section">
       <div class="settings__section-title">Anthropic API キー</div>
       <div class="settings__row">
         <span v-if="configured" class="settings__configured">設定済み ✓</span>
@@ -35,20 +47,34 @@
 import { ref, onMounted } from 'vue'
 import { useToast } from '../composables/useToast'
 import { fetchSettings, updateSettings, deleteApiKey } from '../api/settings'
+import { fetchPlayers } from '../api/stats'
 
 const { showSuccess, showError } = useToast()
 
 const configured = ref(false)
 const apiKeyInput = ref('')
+const playerList = ref<string[]>([])
+const defaultPlayerInput = ref('')
 
 onMounted(async () => {
   try {
-    const s = await fetchSettings()
+    const [s, players] = await Promise.all([fetchSettings(), fetchPlayers()])
     configured.value = s.api_key_configured
+    playerList.value = players
+    defaultPlayerInput.value = s.default_player ?? ''
   } catch {
     showError('設定の取得に失敗しました')
   }
 })
+
+async function saveDefaultPlayer() {
+  try {
+    await updateSettings({ default_player: defaultPlayerInput.value || null })
+    showSuccess('デフォルトプレイヤーを保存しました')
+  } catch {
+    showError('保存に失敗しました')
+  }
+}
 
 async function saveApiKey() {
   if (!apiKeyInput.value.trim()) return
@@ -158,6 +184,17 @@ async function removeApiKey() {
 .settings__btn--danger {
   color: #a03030;
   border-color: #d8a0a0;
+}
+
+.settings__select {
+  padding: 6px 10px;
+  border: 1px solid #c8b89a;
+  border-radius: 4px;
+  font-size: 13px;
+  background: #fff;
+  color: #2c2416;
+  font-family: inherit;
+  min-width: 160px;
 }
 
 .settings__note {
