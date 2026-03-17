@@ -140,7 +140,7 @@
             <th>デッキ名</th>
             <th>フォーマット</th>
             <th class="deck-def__th-num">しきい値</th>
-            <th>シグネチャカード</th>
+            <th>シグネチャカード / 除外カード</th>
             <th></th>
           </tr>
         </thead>
@@ -150,7 +150,12 @@
             <td>{{ d.deck_name }}</td>
             <td>{{ d.format ?? '—' }}</td>
             <td class="deck-def__td-num">{{ d.threshold }}</td>
-            <td class="deck-def__td-cards">{{ d.cards.join(', ') }}</td>
+            <td class="deck-def__td-cards">
+              {{ d.cards.join(', ') }}
+              <span v-if="d.exclude_cards.length > 0" class="deck-def__exclude-cards">
+                ✕ {{ d.exclude_cards.join(', ') }}
+              </span>
+            </td>
             <td class="deck-def__td-actions">
               <button class="deck-def__btn deck-def__btn--sm" @click="openEdit(d)">編集</button>
               <button class="deck-def__btn deck-def__btn--sm deck-def__btn--danger" @click="remove(d)">削除</button>
@@ -228,7 +233,11 @@
           </div>
           <div class="deck-def__field deck-def__field--full">
             <label class="deck-def__label">シグネチャカード（1行1枚）</label>
-            <textarea v-model="cardText" class="deck-def__textarea" rows="8" placeholder="Supreme Phantom&#10;Mausoleum Wanderer&#10;Spectral Sailor" />
+            <textarea v-model="cardText" class="deck-def__textarea" rows="6" placeholder="Supreme Phantom&#10;Mausoleum Wanderer&#10;Spectral Sailor" />
+          </div>
+          <div class="deck-def__field deck-def__field--full">
+            <label class="deck-def__label">除外カード（1行1枚）— 含まれていたらこのデッキと判定しない</label>
+            <textarea v-model="excludeCardText" class="deck-def__textarea deck-def__textarea--exclude" rows="4" placeholder="Lightning Bolt&#10;Ragavan, Nimble Pilferer" />
           </div>
         </div>
 
@@ -271,6 +280,7 @@ const filteredDefinitions = computed(() => {
 const editingId = ref<number | null>(null)
 const editing = ref<DeckDefinitionInput | null>(null)
 const cardText = ref('')
+const excludeCardText = ref('')
 
 // confirm dialog
 const confirmVisible = ref(false)
@@ -431,8 +441,9 @@ const bulk = ref({
 
 function openNew() {
   editingId.value = null
-  editing.value = { player_name: null, deck_name: '', format: null, threshold: 2, cards: [] }
+  editing.value = { player_name: null, deck_name: '', format: null, threshold: 2, cards: [], exclude_cards: [] }
   cardText.value = ''
+  excludeCardText.value = ''
 }
 
 function openEdit(d: DeckDefinition) {
@@ -443,8 +454,10 @@ function openEdit(d: DeckDefinition) {
     format: d.format,
     threshold: d.threshold,
     cards: [...d.cards],
+    exclude_cards: [...d.exclude_cards],
   }
   cardText.value = d.cards.join('\n')
+  excludeCardText.value = d.exclude_cards.join('\n')
 }
 
 async function save() {
@@ -458,7 +471,8 @@ async function save() {
     showError('シグネチャカードを1枚以上入力してください')
     return
   }
-  const body: DeckDefinitionInput = { ...editing.value, cards }
+  const exclude_cards = excludeCardText.value.split('\n').map(s => s.trim()).filter(Boolean)
+  const body: DeckDefinitionInput = { ...editing.value, cards, exclude_cards }
   try {
     if (editingId.value) {
       await updateDeckDefinition(editingId.value, body)
@@ -714,6 +728,21 @@ onMounted(async () => {
   color: #7a6a55;
   font-size: 12px;
   max-width: 300px;
+}
+
+.deck-def__exclude-cards {
+  display: block;
+  color: #a03030;
+  margin-top: 2px;
+}
+
+.deck-def__textarea--exclude {
+  border-color: #d8a0a0;
+}
+
+.deck-def__textarea--exclude:focus {
+  outline: none;
+  border-color: #a03030;
 }
 
 .deck-def__td-actions {

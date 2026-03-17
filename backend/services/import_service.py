@@ -206,7 +206,10 @@ class ImportService:
         for defn in definitions:
             if defn.format and fmt and defn.format != fmt:
                 continue
-            sig_cards = {c.card_name for c in defn.cards}
+            exclude_cards = {c.card_name for c in defn.cards if c.is_exclude}
+            if exclude_cards & used_cards:
+                continue  # 除外カードが1枚でも含まれていればスキップ
+            sig_cards = {c.card_name for c in defn.cards if not c.is_exclude}
             match_count = len(sig_cards & used_cards)
 
             is_player = defn.player_name is not None

@@ -31,7 +31,8 @@ class DeckDefinitionInput(BaseModel):
     deck_name: str
     format: str | None = None
     threshold: int = 2
-    cards: list[str]  # カード名のリスト
+    cards: list[str]          # シグネチャカード名のリスト
+    exclude_cards: list[str] = []  # 除外カード名のリスト
 
 
 class DeckBulkInput(BaseModel):
@@ -56,7 +57,8 @@ def _definition_to_dict(d: DeckDefinition) -> dict:
         "deck_name": d.deck_name,
         "format": d.format,
         "threshold": d.threshold,
-        "cards": [c.card_name for c in d.cards],
+        "cards": [c.card_name for c in d.cards if not c.is_exclude],
+        "exclude_cards": [c.card_name for c in d.cards if c.is_exclude],
     }
 
 
@@ -85,7 +87,9 @@ def create_deck_definition(body: DeckDefinitionInput, db: Session = Depends(get_
     db.add(d)
     db.flush()
     for card_name in body.cards:
-        db.add(DeckDefinitionCard(definition_id=d.id, card_name=card_name))
+        db.add(DeckDefinitionCard(definition_id=d.id, card_name=card_name, is_exclude=False))
+    for card_name in body.exclude_cards:
+        db.add(DeckDefinitionCard(definition_id=d.id, card_name=card_name, is_exclude=True))
     db.commit()
     db.refresh(d)
     return _definition_to_dict(d)
@@ -110,7 +114,9 @@ def update_deck_definition(
         db.delete(c)
     db.flush()
     for card_name in body.cards:
-        db.add(DeckDefinitionCard(definition_id=d.id, card_name=card_name))
+        db.add(DeckDefinitionCard(definition_id=d.id, card_name=card_name, is_exclude=False))
+    for card_name in body.exclude_cards:
+        db.add(DeckDefinitionCard(definition_id=d.id, card_name=card_name, is_exclude=True))
 
     db.commit()
     db.refresh(d)
@@ -322,6 +328,12 @@ async def import_deck_definitions(
             errors += 1
             continue
 
+        exclude_names = [
+            c.strip()
+            for c in item.get("exclude_cards", [])
+            if isinstance(c, str) and c.strip()
+        ]
+
         # 同名・同プレイヤー・同フォーマットの既存定義を検索
         existing = (
             db.query(DeckDefinition)
@@ -343,7 +355,9 @@ async def import_deck_definitions(
                 db.flush()
                 existing.threshold = threshold
                 for card_name in card_names:
-                    db.add(DeckDefinitionCard(definition_id=existing.id, card_name=card_name))
+                    db.add(DeckDefinitionCard(definition_id=existing.id, card_name=card_name, is_exclude=False))
+                for card_name in exclude_names:
+                    db.add(DeckDefinitionCard(definition_id=existing.id, card_name=card_name, is_exclude=True))
                 imported += 1
         else:
             d = DeckDefinition(
@@ -355,7 +369,9 @@ async def import_deck_definitions(
             db.add(d)
             db.flush()
             for card_name in card_names:
-                db.add(DeckDefinitionCard(definition_id=d.id, card_name=card_name))
+                db.add(DeckDefinitionCard(definition_id=d.id, card_name=card_name, is_exclude=False))
+            for card_name in exclude_names:
+                db.add(DeckDefinitionCard(definition_id=d.id, card_name=card_name, is_exclude=True))
             imported += 1
 
     db.commit()
@@ -427,10 +443,13 @@ def export_deck_definitions(db: Session = Depends(get_db)):
         entry: dict = {
             "deck_name": d.deck_name,
             "threshold": d.threshold,
-            "cards": [c.card_name for c in d.cards],
+            "cards": [c.card_name for c in d.cards if not c.is_exclude],
         }
         if d.format:
             entry["format"] = d.format
+        exclude = [c.card_name for c in d.cards if c.is_exclude]
+        if exclude:
+            entry["exclude_cards"] = exclude
         definitions.append(entry)
 
     payload = {

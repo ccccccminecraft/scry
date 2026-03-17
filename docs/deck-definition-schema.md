@@ -50,6 +50,9 @@ Scry 本体での手動管理・Claude API 生成・外部ツール（mtggoldfis
     "Spell Queller",
     "Shacklegeist"
   ],
+  "exclude_cards": [
+    "Ragavan, Nimble Pilferer"
+  ],
   "tags": ["aggro", "tribal"]
 }
 ```
@@ -60,6 +63,7 @@ Scry 本体での手動管理・Claude API 生成・外部ツール（mtggoldfis
 | `format` | string \| null | — | フォーマット（省略時はトップレベルの `format` を使用。両方省略で問わず） |
 | `threshold` | integer | — | マッチ判定に必要な最低シグネチャカード枚数（省略時: `2`） |
 | `cards` | string[] | ✓ | シグネチャカード名のリスト（英語カード名） |
+| `exclude_cards` | string[] | — | 除外カード名のリスト（省略時: `[]`）。リスト内のカードが1枚でも使用されていた場合、この定義はマッチしない |
 | `tags` | string[] | — | 将来のフィルタリング用タグ（例: `["aggro", "tribal"]`）。現バージョンでは無視される |
 
 ---
@@ -99,6 +103,9 @@ Scry 本体での手動管理・Claude API 生成・外部ツール（mtggoldfis
         "Rattlechains",
         "Spell Queller",
         "Shacklegeist"
+      ],
+      "exclude_cards": [
+        "Ragavan, Nimble Pilferer"
       ],
       "tags": ["aggro", "tribal"]
     },
@@ -164,9 +171,10 @@ Scry 本体での手動管理・Claude API 生成・外部ツール（mtggoldfis
 2. `definitions` を順に処理し、`deck_name` と `cards` が存在するものだけ登録する
 3. `format` は Definition 側を優先し、省略時はトップレベルの `format` を使用する
 4. `threshold` 省略時はデフォルト値 `2` を使用する
-5. `tags` は現バージョンでは保存しない（将来のバージョンアップで対応）
-6. インポート時にプレイヤー指定（固有 or 共通）をユーザーが選択する
-7. 同名のデッキ定義が既に存在する場合は**スキップ or 上書き**をユーザーが選択できる
+5. `exclude_cards` 省略時は除外カードなしとして登録する
+6. `tags` は現バージョンでは保存しない（将来のバージョンアップで対応）
+7. インポート時にプレイヤー指定（固有 or 共通）をユーザーが選択する
+8. 同名のデッキ定義が既に存在する場合は**スキップ or 上書き**をユーザーが選択できる
 
 ---
 
@@ -176,6 +184,7 @@ Scry 本体での手動管理・Claude API 生成・外部ツール（mtggoldfis
 - `generated_at` は出力時刻
 - `format` はトップレベルでは `null`（各定義に個別に含める）
 - `player_name` は出力しない（インポート先で再指定する想定）
+- `exclude_cards` は1件以上ある定義のみ出力する（空の場合は省略）
 
 ---
 
@@ -198,3 +207,4 @@ Scry 本体での手動管理・Claude API 生成・外部ツール（mtggoldfis
 | バージョン | 変更内容 |
 |---|---|
 | 1.0 | 初版 |
+| 1.0 (追記) | `exclude_cards` フィールドを追加。除外カードが使用されていた場合にデッキ定義をマッチさせない機能 |

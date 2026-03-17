@@ -36,6 +36,10 @@ matches
   │       └──< actions
   │
   └──< match_players
+
+deck_definitions
+  │
+  └──< deck_definition_cards
 ```
 
 ---
@@ -328,6 +332,41 @@ AI 分析画面での会話セッションを管理する。
 | `content` | TEXT | NOT NULL | メッセージ本文 |
 | `display_order` | INTEGER | NOT NULL | セッション内の順番（1始まり） |
 | `created_at` | DATETIME | NOT NULL | メッセージ日時 |
+
+---
+
+---
+
+### `deck_definitions`（デッキ定義）
+
+デッキアーキタイプの識別定義を管理する。`player_name` が NULL の場合は全プレイヤー共通の定義。
+
+| カラム | 型 | 制約 | 説明 |
+|--------|----|------|------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | - |
+| `player_name` | TEXT | NULL 可 | プレイヤー固有定義の場合はプレイヤー名、共通定義の場合は NULL |
+| `deck_name` | TEXT | NOT NULL | デッキ名（例: `"Spirits"`, `"Burn"`） |
+| `format` | TEXT | NULL 可 | 適用フォーマット（NULL = 問わず） |
+| `threshold` | INTEGER | NOT NULL DEFAULT 2 | マッチ判定に必要な最低シグネチャカード枚数 |
+
+---
+
+### `deck_definition_cards`（デッキ定義カード）
+
+デッキ定義に紐付くシグネチャカードおよび除外カードを管理する。
+
+| カラム | 型 | 制約 | 説明 |
+|--------|----|------|------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | - |
+| `definition_id` | INTEGER | FK → deck_definitions.id | 所属デッキ定義 |
+| `card_name` | TEXT | NOT NULL | カード名（英語） |
+| `is_exclude` | INTEGER | NOT NULL DEFAULT 0 | 除外カードフラグ（0 = シグネチャカード、1 = 除外カード） |
+
+**デッキ判定ロジック**
+
+1. 除外カード（`is_exclude = 1`）が1枚でも使用カードに含まれていればその定義をスキップ
+2. シグネチャカード（`is_exclude = 0`）の一致枚数が `threshold` 以上であればマッチと判定
+3. 複数定義がマッチした場合の優先順位: 一致枚数が多い > プレイヤー固有定義 > 登録順が早い
 
 ---
 

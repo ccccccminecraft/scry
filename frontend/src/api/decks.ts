@@ -7,6 +7,7 @@ export interface DeckDefinition {
   format: string | null
   threshold: number
   cards: string[]
+  exclude_cards: string[]
 }
 
 export interface DeckDefinitionInput {
@@ -15,6 +16,7 @@ export interface DeckDefinitionInput {
   format: string | null
   threshold: number
   cards: string[]
+  exclude_cards: string[]
 }
 
 export interface DeckBulkInput {

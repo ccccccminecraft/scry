@@ -58,6 +58,13 @@ def init_db() -> None:
                 conn.execute(text("ALTER TABLE actions ADD COLUMN target_name TEXT"))
                 conn.commit()
 
+        # deck_definition_cards: is_exclude 列の追加
+        if "deck_definition_cards" in inspector.get_table_names():
+            cols = {c["name"] for c in inspector.get_columns("deck_definition_cards")}
+            if "is_exclude" not in cols:
+                conn.execute(text("ALTER TABLE deck_definition_cards ADD COLUMN is_exclude INTEGER NOT NULL DEFAULT 0"))
+                conn.commit()
+
         # analysis_sessions: フィルター列の追加
         if "analysis_sessions" in inspector.get_table_names():
             cols = {c["name"] for c in inspector.get_columns("analysis_sessions")}

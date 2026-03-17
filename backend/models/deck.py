@@ -1,4 +1,4 @@
-from sqlalchemy import Integer, Text, ForeignKey, Index
+from sqlalchemy import Integer, Text, Boolean, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
 
@@ -31,5 +31,6 @@ class DeckDefinitionCard(Base):
         Integer, ForeignKey("deck_definitions.id"), nullable=False
     )
     card_name: Mapped[str] = mapped_column(Text, nullable=False)
+    is_exclude: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     definition: Mapped["DeckDefinition"] = relationship(back_populates="cards")
