@@ -103,7 +103,7 @@ import { ref, computed, watch, onMounted, onActivated } from 'vue'
 
 defineOptions({ name: 'MatchListView' })
 import { fetchMatches, type MatchSummary } from '../api/matches'
-import { fetchPlayers, fetchOpponents, fetchOpponentDecks, fetchFormats } from '../api/stats'
+import { fetchPlayers, fetchOpponents, fetchPlayerDecks, fetchOpponentDecks, fetchFormats } from '../api/stats'
 import { useToast } from '../composables/useToast'
 
 const { showError } = useToast()
@@ -115,6 +115,7 @@ const loading = ref(false)
 
 const playerList = ref<string[]>([])
 const opponentList = ref<string[]>([])
+const deckList = ref<string[]>([])
 const opponentDeckList = ref<string[]>([])
 const formatList = ref<string[]>([])
 
@@ -128,15 +129,6 @@ const filterDateTo = ref('')
 
 const totalPages = computed(() => Math.ceil(total.value / 10))
 
-const deckList = computed(() => {
-  if (!filterPlayer.value) return []
-  const decks = new Set<string>()
-  matches.value.forEach(m => {
-    const idx = m.players.indexOf(filterPlayer.value)
-    if (idx >= 0 && m.decks[idx]) decks.add(m.decks[idx]!)
-  })
-  return [...decks].sort()
-})
 
 async function load() {
   loading.value = true
@@ -156,6 +148,15 @@ async function load() {
     showError(e instanceof Error ? e.message : '対戦履歴の取得に失敗しました')
   } finally {
     loading.value = false
+  }
+}
+
+async function loadDecks() {
+  if (!filterPlayer.value) { deckList.value = []; return }
+  try {
+    deckList.value = await fetchPlayerDecks(filterPlayer.value)
+  } catch {
+    // 失敗しても無視
   }
 }
 
@@ -192,6 +193,7 @@ watch(filterPlayer, () => {
   filterOpponentDeck.value = ''
   page.value = 1
   loadOpponents()
+  loadDecks()
   loadOpponentDecks()
   load()
 })
