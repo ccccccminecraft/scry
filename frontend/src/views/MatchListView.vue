@@ -42,7 +42,6 @@
           <option v-for="f in formatList" :key="f" :value="f">{{ f }}</option>
         </select>
       </div>
-      <div class="filter-break"></div>
       <div class="filter-group">
         <label class="filter-label">対戦日時（開始）</label>
         <input type="date" v-model="filterDateFrom" class="filter-date" />
@@ -660,37 +659,33 @@ onActivated(initData)
 .match-list__filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 10px;
   margin-bottom: 16px;
-  padding: 12px 16px;
+  padding: 10px 16px;
   background: #fff;
   border: 1px solid #e0d8c8;
   border-radius: 6px;
 }
 
-.filter-break {
-  width: 100%;
-}
-
 .filter-group {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .filter-label {
-  font-size: 11px;
+  font-size: 10px;
   color: #7a6a55;
 }
 
 .filter-select,
 .filter-date {
-  padding: 4px 8px;
+  padding: 3px 6px;
   border: 1px solid #c8b89a;
   border-radius: 4px;
   background: #fff;
   color: #2c2416;
-  font-size: 13px;
+  font-size: 11px;
   font-family: inherit;
 }
 
