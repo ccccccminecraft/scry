@@ -51,6 +51,11 @@
       </div>
     </div>
 
+    <!-- 対象件数 -->
+    <div class="ai-export__section ai-export__count-section">
+      対象: <span class="ai-export__count-num">{{ matchCount !== null ? `${matchCount} 件` : '—' }}</span>
+    </div>
+
     <!-- 出力内容 -->
     <div class="ai-export__section">
       <div class="ai-export__section-label">出力内容</div>
@@ -133,6 +138,14 @@ const expLimit = ref(200)
 const noLimit = ref(false)
 const confirmMsg = ref('')
 const downloading = ref(false)
+const matchCount = ref<number | null>(null)
+
+async function loadCount() {
+  if (!expPlayer.value) { matchCount.value = null; return }
+  try {
+    matchCount.value = await fetchExportCount(currentFilters())
+  } catch { /* ignore */ }
+}
 
 async function loadOpponentsAndDecks() {
   if (!expPlayer.value) {
@@ -166,12 +179,16 @@ watch(expPlayer, () => {
   expDeck.value = ''
   expOpponentDeck.value = ''
   loadOpponentsAndDecks()
+  loadCount()
 })
 
 watch(expOpponent, () => {
   expOpponentDeck.value = ''
   loadOpponentDecks()
+  loadCount()
 })
+
+watch([expDeck, expOpponentDeck, expFormat, expDateFrom, expDateTo], loadCount)
 
 function currentFilters() {
   return {
@@ -253,6 +270,7 @@ onMounted(async () => {
     formatList.value = formats
     if (players.length > 0) {
       expPlayer.value = players[0]
+      // watch が発火するので loadCount は不要
     }
   } catch {
     showError('初期データの取得に失敗しました')
@@ -263,7 +281,7 @@ onMounted(async () => {
 <style scoped>
 .ai-export {
   padding: 24px;
-  max-width: 760px;
+  max-width: 960px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -285,8 +303,18 @@ onMounted(async () => {
   gap: 10px;
 }
 
+.ai-export__count-section {
+  font-size: 13px;
+  color: #7a6a55;
+}
+
+.ai-export__count-num {
+  font-weight: bold;
+  color: #2c2416;
+}
+
 .ai-export__section--fixed {
-  min-height: 90px;
+  min-height: 116px;
 }
 
 .ai-export__section-label {
@@ -318,7 +346,7 @@ onMounted(async () => {
   padding: 3px 6px;
   border: 1px solid #c8b89a;
   border-radius: 4px;
-  font-size: 13px;
+  font-size: 11px;
   background: #fff;
   color: #2c2416;
   font-family: inherit;
@@ -390,12 +418,12 @@ onMounted(async () => {
 .ai-export__confirm-btns {
   display: flex;
   gap: 8px;
-  justify-content: flex-end;
+  justify-content: center;
 }
 
 .ai-export__footer {
   display: flex;
-  justify-content: flex-end;
+  justify-content: center;
 }
 
 .ai-export__btn {
