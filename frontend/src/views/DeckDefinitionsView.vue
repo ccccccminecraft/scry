@@ -5,8 +5,8 @@
     <ConfirmDialog
       :visible="confirmVisible"
       :message="confirmMessage"
-      confirm-label="適用"
-      @confirm="onConfirmApply"
+      :confirm-label="confirmLabel"
+      @confirm="onConfirm"
       @cancel="confirmVisible = false"
     />
 
@@ -272,31 +272,43 @@ const editingId = ref<number | null>(null)
 const editing = ref<DeckDefinitionInput | null>(null)
 const cardText = ref('')
 
-// apply definitions
-const applying = ref(false)
+// confirm dialog
 const confirmVisible = ref(false)
 const confirmMessage = ref('')
-const confirmOverwrite = ref(false)
+const confirmLabel = ref('OK')
+const pendingAction = ref<(() => Promise<void>) | null>(null)
 
-function runApply(overwrite: boolean) {
-  confirmOverwrite.value = overwrite
-  confirmMessage.value = overwrite
-    ? 'すべての試合にデッキ定義を適用します。既存のデッキ名も上書きされます。よろしいですか？'
-    : 'デッキ名が未設定の試合にデッキ定義を適用します。よろしいですか？'
+function showConfirm(message: string, label: string, action: () => Promise<void>) {
+  confirmMessage.value = message
+  confirmLabel.value = label
+  pendingAction.value = action
   confirmVisible.value = true
 }
 
-async function onConfirmApply() {
+async function onConfirm() {
   confirmVisible.value = false
-  applying.value = true
-  try {
-    const res = await applyDeckDefinitions(confirmOverwrite.value)
-    showSuccess(`${res.updated} 件更新しました（スキップ: ${res.skipped} 件）`)
-  } catch (e) {
-    showError(e instanceof Error ? e.message : '適用に失敗しました')
-  } finally {
-    applying.value = false
-  }
+  await pendingAction.value?.()
+  pendingAction.value = null
+}
+
+// apply definitions
+const applying = ref(false)
+
+function runApply(overwrite: boolean) {
+  const message = overwrite
+    ? 'すべての試合にデッキ定義を適用します。既存のデッキ名も上書きされます。よろしいですか？'
+    : 'デッキ名が未設定の試合にデッキ定義を適用します。よろしいですか？'
+  showConfirm(message, '適用', async () => {
+    applying.value = true
+    try {
+      const res = await applyDeckDefinitions(overwrite)
+      showSuccess(`${res.updated} 件更新しました（スキップ: ${res.skipped} 件）`)
+    } catch (e) {
+      showError(e instanceof Error ? e.message : '適用に失敗しました')
+    } finally {
+      applying.value = false
+    }
+  })
 }
 
 // JSON import/export
@@ -319,38 +331,52 @@ function onFileChange(e: Event) {
   importFile.value = input.files?.[0] ?? null
 }
 
-async function runImport() {
+function runImport() {
   if (!importFile.value) return
-  importing.value = true
-  try {
-    const res = await importDeckDefinitions(
-      importFile.value,
-      importPlayerName.value || null,
-      importOnConflict.value,
-    )
-    definitions.value = await fetchDeckDefinitions()
-    showSuccess(`インポート完了: ${res.imported}件追加、${res.skipped}件スキップ、${res.errors}件エラー`)
-    importFile.value = null
-    if (fileInputRef.value) fileInputRef.value.value = ''
-  } catch {
-    showError('インポートに失敗しました')
-  } finally {
-    importing.value = false
-  }
+  const target = importPlayerName.value ? `プレイヤー「${importPlayerName.value}」` : '共通定義'
+  const conflict = importOnConflict.value === 'skip' ? 'スキップ' : '上書き'
+  showConfirm(
+    `「${importFile.value.name}」を${target}としてインポートします。同名定義は${conflict}されます。よろしいですか？`,
+    'インポート',
+    async () => {
+      importing.value = true
+      try {
+        const res = await importDeckDefinitions(
+          importFile.value!,
+          importPlayerName.value || null,
+          importOnConflict.value,
+        )
+        definitions.value = await fetchDeckDefinitions()
+        showSuccess(`インポート完了: ${res.imported}件追加、${res.skipped}件スキップ、${res.errors}件エラー`)
+        importFile.value = null
+        if (fileInputRef.value) fileInputRef.value.value = ''
+      } catch {
+        showError('インポートに失敗しました')
+      } finally {
+        importing.value = false
+      }
+    },
+  )
 }
 
-async function runExport() {
-  try {
-    const blob = await exportDeckDefinitions()
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'deck_definitions.json'
-    a.click()
-    URL.revokeObjectURL(url)
-  } catch {
-    showError('エクスポートに失敗しました')
-  }
+function runExport() {
+  showConfirm(
+    '現在のデッキ定義をJSONファイルとしてエクスポートします。よろしいですか？',
+    'エクスポート',
+    async () => {
+      try {
+        const blob = await exportDeckDefinitions()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'deck_definitions.json'
+        a.click()
+        URL.revokeObjectURL(url)
+      } catch {
+        showError('エクスポートに失敗しました')
+      }
+    },
+  )
 }
 
 async function runGenerate() {
