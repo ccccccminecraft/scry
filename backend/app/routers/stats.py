@@ -187,7 +187,7 @@ def get_stats(
     format: str | None = Query(default=None),
     date_from: str | None = Query(default=None, description="YYYY-MM-DD"),
     date_to: str | None = Query(default=None, description="YYYY-MM-DD"),
-    history_size: int = Query(default=20, ge=1, le=200),
+    history_size: int = Query(default=20, ge=0),
     db: Session = Depends(get_db),
 ):
     """サマリー統計を返す。"""
@@ -253,8 +253,8 @@ def get_stats(
     )
     mulligan_rate = len(mulligan_game_ids) / total_games if total_games else 0.0
 
-    # ── 勝率推移（直近 history_size 件）────────────────────────────────
-    recent = matches[-history_size:]
+    # ── 勝率推移（history_size=0 で全件、それ以外は直近 N 件）──────────
+    recent = matches if history_size == 0 else matches[-history_size:]
     win_rate_history = [
         {
             "date": m.played_at.isoformat(),

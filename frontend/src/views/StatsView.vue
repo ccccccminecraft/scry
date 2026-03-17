@@ -77,7 +77,15 @@
       <div class="stats__charts">
         <!-- 勝率推移 -->
         <div class="stats__chart-box stats__chart-box--wide">
-          <div class="stats__chart-title">勝率推移（直近{{ stats.win_rate_history.length }}試合）</div>
+          <div class="stats__chart-title-row">
+            <div class="stats__chart-title">
+              勝率推移（{{ historyMode === 0 ? '全' : '直近' }}{{ stats.win_rate_history.length }}試合）
+            </div>
+            <select v-model="historyMode" class="stats__history-select" @change="loadStats">
+              <option :value="20">直近20試合</option>
+              <option :value="0">全試合</option>
+            </select>
+          </div>
           <WinRateHistoryChart
             v-if="stats.win_rate_history.length > 0"
             :data="stats.win_rate_history"
@@ -175,6 +183,7 @@ const {
 } = useFilterState()
 
 const stats = ref<StatsResponse | null>(null)
+const historyMode = ref<number>(20)
 const cardStats = ref<CardStat[]>([])
 const opponentCardStats = ref<CardStat[]>([])
 
@@ -226,7 +235,7 @@ async function loadStats() {
       format: format.value || undefined,
       date_from: dateFrom.value || undefined,
       date_to: dateTo.value || undefined,
-      history_size: 20,
+      history_size: historyMode.value,
     })
   } catch {
     showError('統計の取得に失敗しました')
@@ -395,11 +404,27 @@ onActivated(activate)
   min-width: 340px;
 }
 
+.stats__chart-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
 .stats__chart-title {
   font-size: 12px;
   color: #7a6a55;
-  margin-bottom: 8px;
   font-weight: bold;
+}
+
+.stats__history-select {
+  padding: 2px 6px;
+  border: 1px solid #c8b89a;
+  border-radius: 4px;
+  background: #fff;
+  color: #2c2416;
+  font-size: 11px;
+  font-family: inherit;
 }
 
 .stats__no-data {
