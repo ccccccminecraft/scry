@@ -151,6 +151,8 @@ export function useFilterState() {
     deckList,
     opponentDeckList,
     formatList,
+    // 最低試合数
+    minDeckMatches,
     // アクション
     init,
     resetFilters,

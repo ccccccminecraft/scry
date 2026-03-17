@@ -197,6 +197,7 @@ def get_stats(
     date_from: str | None = Query(default=None, description="YYYY-MM-DD"),
     date_to: str | None = Query(default=None, description="YYYY-MM-DD"),
     history_size: int = Query(default=20, ge=0),
+    min_deck_matches: int = Query(default=1, ge=0),
     db: Session = Depends(get_db),
 ):
     """サマリー統計を返す。"""
@@ -274,7 +275,7 @@ def get_stats(
     ]
 
     # ── デッキ別勝率 ──────────────────────────────────────────────────
-    deck_stats = _calc_deck_stats(db, player, match_id_list)
+    deck_stats = _calc_deck_stats(db, player, match_id_list, min_deck_matches)
 
     return {
         "total_matches": total_matches,
@@ -288,7 +289,7 @@ def get_stats(
     }
 
 
-def _calc_deck_stats(db: Session, player: str, match_id_list: list[str]) -> list[dict]:
+def _calc_deck_stats(db: Session, player: str, match_id_list: list[str], min_deck_matches: int = 1) -> list[dict]:
     """デッキ別の試合数と勝率を返す。"""
     rows = (
         db.query(MatchPlayer.deck_name, Match.match_winner)
@@ -316,6 +317,7 @@ def _calc_deck_stats(db: Session, player: str, match_id_list: list[str]) -> list
             "win_rate": d["wins"] / d["matches"],
         }
         for name, d in sorted(deck_map.items(), key=lambda x: -x[1]["matches"])
+        if d["matches"] >= min_deck_matches
     ]
 
 

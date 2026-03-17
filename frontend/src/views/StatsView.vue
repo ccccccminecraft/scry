@@ -179,6 +179,7 @@ const {
   deck, opponentDeck, dateFrom, dateTo,
   player, opponent, format,
   playerList, opponentList, deckList, opponentDeckList, formatList,
+  minDeckMatches,
   init,
 } = useFilterState()
 
@@ -236,6 +237,7 @@ async function loadStats() {
       date_from: dateFrom.value || undefined,
       date_to: dateTo.value || undefined,
       history_size: historyMode.value,
+      min_deck_matches: minDeckMatches.value,
     })
   } catch {
     showError('統計の取得に失敗しました')

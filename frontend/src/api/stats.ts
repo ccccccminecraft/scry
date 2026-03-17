@@ -39,6 +39,7 @@ export interface StatsFilters {
   date_from?: string
   date_to?: string
   history_size?: number
+  min_deck_matches?: number
 }
 
 export async function fetchStats(filters: StatsFilters): Promise<StatsResponse> {
