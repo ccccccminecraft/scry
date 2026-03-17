@@ -154,15 +154,16 @@ async function onGamePlanChange(p: PlayerInfo, value: string) {
 }
 
 .btn-back {
-  background: none;
-  border: none;
-  color: #4a6fa5;
-  font-size: 13px;
-  padding: 0;
+  background: #faf7f0;
+  border: 1px solid #c8b89a;
+  border-radius: 4px;
+  color: #2c2416;
+  font-size: 12px;
+  padding: 5px 12px;
   margin-bottom: 16px;
   cursor: pointer;
 }
-.btn-back:hover { text-decoration: underline; }
+.btn-back:hover { background: #f0ece0; }
 
 .detail__loading {
   color: #7a6a55;
