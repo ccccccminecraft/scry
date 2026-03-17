@@ -388,7 +388,7 @@ function formatDate(iso: string): string {
 <style scoped>
 .import {
   padding: 32px 40px;
-  max-width: 640px;
+  max-width: 960px;
 }
 
 .import__header {
