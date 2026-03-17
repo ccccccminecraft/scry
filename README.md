@@ -12,7 +12,7 @@ Magic Online（MTGO）の対戦ログ（`.dat`）を解析・AI 分析する Win
 - `.dat` ファイルのインポート（単体 / フォルダ一括スキャン）
 - 対戦履歴・ゲーム詳細の閲覧
 - 統計ダッシュボード（勝率・マリガン率・先手後手分析・デッキ別分析等）
-- AI チャット分析（Claude API / OpenAI API）
+- AI チャット分析（Claude API）
 
 ---
 
@@ -121,6 +121,7 @@ scry/
 │   └── tsconfig.electron.json     # electron/ 用（commonjs）
 ├── backend/                       # Python FastAPI
 │   ├── Dockerfile                 # Docker 用（uvicorn）
+│   ├── __version__.py             # バージョン管理
 │   ├── app/
 │   │   ├── main.py                # FastAPI アプリ・起動設定
 │   │   └── routers/               # エンドポイント定義
@@ -145,7 +146,7 @@ scry/
 
 ## AI 分析用エクスポートの活用
 
-「対戦履歴」画面の「AI用エクスポート」ボタンから対戦データを Markdown ファイルとしてエクスポートし、AI サービスに貼り付けて分析できます。
+「エクスポート」画面から対戦データを Markdown ファイルとしてエクスポートし、AI サービスに貼り付けて分析できます。
 
 ### エクスポート時の推奨設定
 
@@ -248,7 +249,7 @@ scry/
 | グラフ | ECharts + vue-echarts |
 | バックエンド | Python 3.11 / FastAPI / uvicorn |
 | DB | SQLite / SQLAlchemy 2.x |
-| AI 分析 | Claude API（デフォルト）/ OpenAI API |
+| AI 分析 | Claude API |
 | API キー管理 | SQLite（ローカルデータベース） |
 | 開発環境 | Docker Compose + WSL2 |
 | 配布 | PyInstaller + electron-builder（Windows installer） |
