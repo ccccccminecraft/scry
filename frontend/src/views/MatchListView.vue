@@ -42,6 +42,7 @@
           <option v-for="f in formatList" :key="f" :value="f">{{ f }}</option>
         </select>
       </div>
+      <div class="filter-break"></div>
       <div class="filter-group">
         <label class="filter-label">対戦日時（開始）</label>
         <input type="date" v-model="filterDateFrom" class="filter-date" />
@@ -665,6 +666,10 @@ onActivated(initData)
   background: #fff;
   border: 1px solid #e0d8c8;
   border-radius: 6px;
+}
+
+.filter-break {
+  width: 100%;
 }
 
 .filter-group {
