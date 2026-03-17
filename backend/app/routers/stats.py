@@ -314,9 +314,10 @@ def get_card_stats(
     date_from: str | None = Query(default=None, description="YYYY-MM-DD"),
     date_to: str | None = Query(default=None, description="YYYY-MM-DD"),
     limit: int = Query(default=20, ge=1, le=100),
+    perspective: str = Query(default="self", description="self or opponent"),
     db: Session = Depends(get_db),
 ):
-    """カード別統計（play/cast のみ）を返す。"""
+    """カード別統計（play/cast のみ）を返す。perspective=self で自分、opponent で相手のカードを集計。"""
     match_id_list = _build_match_id_list(db, player, opponent, deck, opponent_deck, format, date_from, date_to)
 
     if not match_id_list:
@@ -330,7 +331,13 @@ def get_card_stats(
     if not game_ids:
         return {"cards": []}
 
-    # player の play/cast アクションを card_name でグループ集計
+    # 集計対象プレイヤーフィルター
+    if perspective == "opponent":
+        player_filter = Action.player_name != player
+    else:
+        player_filter = Action.player_name == player
+
+    # play/cast アクションを card_name でグループ集計
     rows = (
         db.query(
             Action.card_name,
@@ -339,7 +346,7 @@ def get_card_stats(
         )
         .filter(
             Action.game_id.in_(game_ids),
-            Action.player_name == player,
+            player_filter,
             Action.action_type.in_(["play", "cast"]),
             Action.card_name.isnot(None),
         )
@@ -356,13 +363,13 @@ def get_card_stats(
     if not card_names:
         return {"cards": []}
 
-    # カードが登場したゲームの winner を集計
+    # カードが登場したゲームの winner を集計（勝率は常に選択プレイヤー視点）
     game_rows = (
         db.query(Action.card_name, Action.game_id, Game.winner)
         .join(Game, Game.id == Action.game_id)
         .filter(
             Action.game_id.in_(game_ids),
-            Action.player_name == player,
+            player_filter,
             Action.action_type.in_(["play", "cast"]),
             Action.card_name.in_(card_names),
         )

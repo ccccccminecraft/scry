@@ -105,10 +105,22 @@
       <div class="stats__section">
         <div class="stats__section-title stats__section-title--toggle" @click="cardStatsOpen = !cardStatsOpen">
           <span class="stats__section-caret">{{ cardStatsOpen ? '▼' : '▶' }}</span>
-          カード統計（使用数 Top {{ cardStats.length }}）
+          カード統計
         </div>
         <template v-if="cardStatsOpen">
-          <table class="stats__table" v-if="cardStats.length > 0">
+          <div class="stats__card-tabs">
+            <button
+              class="stats__card-tab"
+              :class="{ 'stats__card-tab--active': cardStatsPerspective === 'self' }"
+              @click="cardStatsPerspective = 'self'"
+            >自分（Top {{ cardStats.length }}）</button>
+            <button
+              class="stats__card-tab"
+              :class="{ 'stats__card-tab--active': cardStatsPerspective === 'opponent' }"
+              @click="cardStatsPerspective = 'opponent'"
+            >相手（Top {{ opponentCardStats.length }}）</button>
+          </div>
+          <table class="stats__table" v-if="activeCardStats.length > 0">
             <thead>
               <tr>
                 <th>カード名</th>
@@ -119,12 +131,13 @@
                   登場ゲーム <span class="stats__sort-icon">{{ sortIcon('game_count') }}</span>
                 </th>
                 <th class="stats__th-num stats__th-sort" @click="toggleSort('win_rate')">
-                  勝率 <span class="stats__sort-icon">{{ sortIcon('win_rate') }}</span>
+                  {{ cardStatsPerspective === 'self' ? '勝率' : '自分の勝率' }}
+                  <span class="stats__sort-icon">{{ sortIcon('win_rate') }}</span>
                 </th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="c in sortedCardStats" :key="c.card_name">
+              <tr v-for="c in sortedActiveCardStats" :key="c.card_name">
                 <td>{{ c.card_name }}</td>
                 <td class="stats__td-num">{{ c.play_count }}</td>
                 <td class="stats__td-num">{{ c.game_count }}</td>
@@ -167,11 +180,13 @@ const dateFrom = ref('')
 const dateTo = ref('')
 const stats = ref<StatsResponse | null>(null)
 const cardStats = ref<CardStat[]>([])
+const opponentCardStats = ref<CardStat[]>([])
 
 type SortKey = 'play_count' | 'game_count' | 'win_rate'
 const sortKey = ref<SortKey>('play_count')
 const sortAsc = ref(false)
 const cardStatsOpen = ref(false)
+const cardStatsPerspective = ref<'self' | 'opponent'>('self')
 
 function toggleSort(key: SortKey) {
   if (sortKey.value === key) {
@@ -187,10 +202,14 @@ function sortIcon(key: SortKey) {
   return sortAsc.value ? '↑' : '↓'
 }
 
-const sortedCardStats = computed(() => {
+const activeCardStats = computed(() =>
+  cardStatsPerspective.value === 'self' ? cardStats.value : opponentCardStats.value
+)
+
+const sortedActiveCardStats = computed(() => {
   const key = sortKey.value
   const dir = sortAsc.value ? 1 : -1
-  return [...cardStats.value].sort((a, b) => (a[key] - b[key]) * dir)
+  return [...activeCardStats.value].sort((a, b) => (a[key] - b[key]) * dir)
 })
 
 const deckList = computed(() =>
@@ -200,7 +219,7 @@ const deckList = computed(() =>
 const pct = (v: number) => `${(v * 100).toFixed(1)}%`
 
 async function loadAll() {
-  await Promise.all([loadStats(), loadCardStats()])
+  await Promise.all([loadStats(), loadCardStats(), loadOpponentCardStats()])
 }
 
 async function loadStats() {
@@ -223,18 +242,37 @@ async function loadStats() {
 
 async function loadCardStats() {
   if (!selectedPlayer.value) return
+  const filters = {
+    player: selectedPlayer.value,
+    opponent: selectedOpponent.value || undefined,
+    deck: selectedDeck.value || undefined,
+    opponent_deck: selectedOpponentDeck.value || undefined,
+    format: selectedFormat.value || undefined,
+    date_from: dateFrom.value || undefined,
+    date_to: dateTo.value || undefined,
+  }
   try {
-    cardStats.value = await fetchCardStats({
-      player: selectedPlayer.value,
-      opponent: selectedOpponent.value || undefined,
-      deck: selectedDeck.value || undefined,
-      opponent_deck: selectedOpponentDeck.value || undefined,
-      format: selectedFormat.value || undefined,
-      date_from: dateFrom.value || undefined,
-      date_to: dateTo.value || undefined,
-    })
+    cardStats.value = await fetchCardStats(filters, 20, 'self')
   } catch {
     showError('カード統計の取得に失敗しました')
+  }
+}
+
+async function loadOpponentCardStats() {
+  if (!selectedPlayer.value) return
+  const filters = {
+    player: selectedPlayer.value,
+    opponent: selectedOpponent.value || undefined,
+    deck: selectedDeck.value || undefined,
+    opponent_deck: selectedOpponentDeck.value || undefined,
+    format: selectedFormat.value || undefined,
+    date_from: dateFrom.value || undefined,
+    date_to: dateTo.value || undefined,
+  }
+  try {
+    opponentCardStats.value = await fetchCardStats(filters, 20, 'opponent')
+  } catch {
+    showError('相手カード統計の取得に失敗しました')
   }
 }
 
@@ -453,6 +491,32 @@ onActivated(initLists)
 .stats__section-caret {
   font-size: 10px;
   margin-right: 4px;
+}
+
+.stats__card-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.stats__card-tab {
+  padding: 3px 12px;
+  border: 1px solid #c8b89a;
+  border-radius: 3px;
+  background: #faf7f0;
+  color: #7a6a55;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.stats__card-tab:hover {
+  background: #f0ece0;
+}
+
+.stats__card-tab--active {
+  background: #4a6fa5;
+  border-color: #4a6fa5;
+  color: #fff;
 }
 
 .stats__table {

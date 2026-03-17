@@ -46,9 +46,13 @@ export async function fetchStats(filters: StatsFilters): Promise<StatsResponse> 
   return res.data
 }
 
-export async function fetchCardStats(filters: StatsFilters, limit = 20): Promise<CardStat[]> {
+export async function fetchCardStats(
+  filters: StatsFilters,
+  limit = 20,
+  perspective: 'self' | 'opponent' = 'self',
+): Promise<CardStat[]> {
   const res = await client.get<{ cards: CardStat[] }>('/api/stats/cards', {
-    params: { ...filters, limit },
+    params: { ...filters, limit, perspective },
   })
   return res.data.cards
 }
