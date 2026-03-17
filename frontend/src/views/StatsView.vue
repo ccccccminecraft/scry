@@ -120,31 +120,33 @@
               @click="cardStatsPerspective = 'opponent'"
             >対戦相手（Top {{ opponentCardStats.length }}）</button>
           </div>
-          <table class="stats__table" v-if="activeCardStats.length > 0">
-            <thead>
-              <tr>
-                <th>カード名</th>
-                <th class="stats__th-num stats__th-sort" @click="toggleSort('play_count')">
-                  使用回数 <span class="stats__sort-icon">{{ sortIcon('play_count') }}</span>
-                </th>
-                <th class="stats__th-num stats__th-sort" @click="toggleSort('game_count')">
-                  登場ゲーム <span class="stats__sort-icon">{{ sortIcon('game_count') }}</span>
-                </th>
-                <th class="stats__th-num stats__th-sort" @click="toggleSort('win_rate')">
-                  {{ cardStatsPerspective === 'self' ? '勝率' : '選択プレイヤー勝率' }}
-                  <span class="stats__sort-icon">{{ sortIcon('win_rate') }}</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="c in sortedActiveCardStats" :key="c.card_name">
-                <td>{{ c.card_name }}</td>
-                <td class="stats__td-num">{{ c.play_count }}</td>
-                <td class="stats__td-num">{{ c.game_count }}</td>
-                <td class="stats__td-num">{{ pct(c.win_rate) }}</td>
-              </tr>
-            </tbody>
-          </table>
+          <div v-if="activeCardStats.length > 0" class="stats__table-wrap">
+            <table class="stats__table">
+              <thead>
+                <tr>
+                  <th>カード名</th>
+                  <th class="stats__th-num stats__th-sort" @click="toggleSort('play_count')">
+                    使用回数 <span class="stats__sort-icon">{{ sortIcon('play_count') }}</span>
+                  </th>
+                  <th class="stats__th-num stats__th-sort" @click="toggleSort('game_count')">
+                    登場ゲーム <span class="stats__sort-icon">{{ sortIcon('game_count') }}</span>
+                  </th>
+                  <th class="stats__th-num stats__th-sort" @click="toggleSort('win_rate')">
+                    {{ cardStatsPerspective === 'self' ? '勝率' : '選択プレイヤー勝率' }}
+                    <span class="stats__sort-icon">{{ sortIcon('win_rate') }}</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="c in sortedActiveCardStats" :key="c.card_name">
+                  <td>{{ c.card_name }}</td>
+                  <td class="stats__td-num">{{ c.play_count }}</td>
+                  <td class="stats__td-num">{{ c.game_count }}</td>
+                  <td class="stats__td-num">{{ pct(c.win_rate) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <div v-else class="stats__no-data">データなし</div>
         </template>
       </div>
@@ -284,7 +286,7 @@ onActivated(activate)
 <style scoped>
 .stats {
   padding: 24px;
-  max-width: 960px;
+
 }
 
 .stats__header {
@@ -461,8 +463,14 @@ onActivated(activate)
   color: #fff;
 }
 
+.stats__table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .stats__table {
   width: 100%;
+  min-width: 360px;
   border-collapse: collapse;
   font-size: 13px;
 }

@@ -227,7 +227,7 @@ onMounted(async () => {
 <style scoped>
 .ai-export {
   padding: 24px;
-  max-width: 960px;
+
   display: flex;
   flex-direction: column;
   gap: 16px;

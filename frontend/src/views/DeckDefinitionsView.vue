@@ -519,7 +519,7 @@ onMounted(async () => {
 <style scoped>
 .deck-def {
   padding: 24px;
-  max-width: 960px;
+
 }
 
 .deck-def__title {

@@ -54,37 +54,39 @@
     <div v-if="loading" class="match-list__loading">読み込み中...</div>
 
     <template v-else>
-      <table v-if="matches.length > 0" class="table">
-        <thead>
-          <tr>
-            <th>日時</th>
-            <th>対戦</th>
-            <th>勝者</th>
-            <th>ゲーム数</th>
-            <th>フォーマット</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="m in matches"
-            :key="m.match_id"
-            class="table__row"
-            @click="$router.push(`/matches/${m.match_id}`)"
-          >
-            <td>{{ formatDate(m.date) }}</td>
-            <td>
-              <span class="match-list__player">{{ m.players[0] }}</span>
-              <span v-if="m.decks[0]" class="match-list__deck">{{ m.decks[0] }}</span>
-              <span class="match-list__vs">vs</span>
-              <span class="match-list__player">{{ m.players[1] }}</span>
-              <span v-if="m.decks[1]" class="match-list__deck">{{ m.decks[1] }}</span>
-            </td>
-            <td>{{ m.match_winner }}</td>
-            <td>{{ m.game_count }}</td>
-            <td>{{ m.format ?? '—' }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <div v-if="matches.length > 0" class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>日時</th>
+              <th>対戦</th>
+              <th>勝者</th>
+              <th>ゲーム数</th>
+              <th>フォーマット</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="m in matches"
+              :key="m.match_id"
+              class="table__row"
+              @click="$router.push(`/matches/${m.match_id}`)"
+            >
+              <td>{{ formatDate(m.date) }}</td>
+              <td>
+                <span class="match-list__player">{{ m.players[0] }}</span>
+                <span v-if="m.decks[0]" class="match-list__deck">{{ m.decks[0] }}</span>
+                <span class="match-list__vs">vs</span>
+                <span class="match-list__player">{{ m.players[1] }}</span>
+                <span v-if="m.decks[1]" class="match-list__deck">{{ m.decks[1] }}</span>
+              </td>
+              <td>{{ m.match_winner }}</td>
+              <td>{{ m.game_count }}</td>
+              <td>{{ m.format ?? '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
       <p v-else class="match-list__empty">対戦ログがありません</p>
 
@@ -224,8 +226,14 @@ onActivated(activate)
   text-align: center;
 }
 
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .table {
   width: 100%;
+  min-width: 480px;
   border-collapse: collapse;
   font-size: 14px;
 }

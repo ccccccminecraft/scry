@@ -150,7 +150,6 @@ async function onGamePlanChange(p: PlayerInfo, value: string) {
 <style scoped>
 .detail {
   padding: 24px;
-  max-width: 900px;
 }
 
 .btn-back {

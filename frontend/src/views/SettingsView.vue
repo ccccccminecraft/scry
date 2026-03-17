@@ -111,7 +111,6 @@ async function removeApiKey() {
 <style scoped>
 .settings {
   padding: 24px;
-  max-width: 560px;
 }
 
 .settings__title {

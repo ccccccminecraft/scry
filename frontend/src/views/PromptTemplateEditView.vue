@@ -116,7 +116,6 @@ async function save() {
 <style scoped>
 .edit {
   padding: 24px;
-  max-width: 720px;
 }
 
 .edit__header {
