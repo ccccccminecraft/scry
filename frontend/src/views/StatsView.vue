@@ -158,7 +158,7 @@ import { ref, computed, watch, onMounted, onActivated } from 'vue'
 defineOptions({ name: 'StatsView' })
 import { useToast } from '../composables/useToast'
 import {
-  fetchStats, fetchCardStats, fetchPlayers, fetchOpponents, fetchOpponentDecks, fetchFormats,
+  fetchStats, fetchCardStats, fetchPlayers, fetchOpponents, fetchPlayerDecks, fetchOpponentDecks, fetchFormats,
   type StatsResponse, type CardStat,
 } from '../api/stats'
 import { fetchSettings } from '../api/settings'
@@ -170,6 +170,7 @@ const { showError } = useToast()
 
 const playerList = ref<string[]>([])
 const opponentList = ref<string[]>([])
+const deckList = ref<string[]>([])
 const opponentDeckList = ref<string[]>([])
 const formatList = ref<string[]>([])
 const selectedPlayer = ref('')
@@ -213,9 +214,6 @@ const sortedActiveCardStats = computed(() => {
   return [...activeCardStats.value].sort((a, b) => (a[key] - b[key]) * dir)
 })
 
-const deckList = computed(() =>
-  stats.value?.deck_stats.map(d => d.deck_name) ?? []
-)
 
 const pct = (v: number) => `${(v * 100).toFixed(1)}%`
 
@@ -286,6 +284,15 @@ async function loadOpponents() {
   }
 }
 
+async function loadDecks() {
+  if (!selectedPlayer.value) { deckList.value = []; return }
+  try {
+    deckList.value = await fetchPlayerDecks(selectedPlayer.value)
+  } catch {
+    // 失敗しても無視
+  }
+}
+
 async function loadOpponentDecks() {
   if (!selectedPlayer.value) {
     opponentDeckList.value = []
@@ -306,6 +313,7 @@ watch(selectedPlayer, () => {
   selectedDeck.value = ''
   selectedOpponentDeck.value = ''
   loadOpponents()
+  loadDecks()
   loadOpponentDecks()
   loadAll()
 })
@@ -330,6 +338,7 @@ async function initLists() {
       selectedPlayer.value = (preferred && players.includes(preferred)) ? preferred : players[0]
       // watch が発火するので loadAll/loadOpponents は不要
     } else if (selectedPlayer.value) {
+      loadDecks()
       loadAll()
     }
   } catch {
