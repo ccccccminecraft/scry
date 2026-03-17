@@ -235,7 +235,7 @@ const deckList = computed(() => {
 async function load() {
   loading.value = true
   try {
-    const res = await fetchMatches(50, (page.value - 1) * 50, {
+    const res = await fetchMatches(10, (page.value - 1) * 10, {
       player: filterPlayer.value || undefined,
       opponent: filterOpponent.value || undefined,
       deck: filterDeck.value || undefined,
