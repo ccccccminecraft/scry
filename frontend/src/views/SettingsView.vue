@@ -15,6 +15,22 @@
     </div>
 
     <div class="settings__section">
+      <div class="settings__section-title">絞り込みの最低試合数</div>
+      <div class="settings__row">
+        <label class="settings__inline-label">プレイヤー</label>
+        <input v-model.number="minPlayerMatchesInput" type="number" min="0" class="settings__number-input" />
+      </div>
+      <div class="settings__row">
+        <label class="settings__inline-label">デッキ</label>
+        <input v-model.number="minDeckMatchesInput" type="number" min="0" class="settings__number-input" />
+      </div>
+      <div class="settings__row">
+        <button class="settings__btn settings__btn--primary" @click="saveMinMatches">保存</button>
+      </div>
+      <p class="settings__note">プルダウンの候補に表示するプレイヤーおよびデッキの最低試合数を設定します。0 で全件表示します。</p>
+    </div>
+
+    <div class="settings__section">
       <div class="settings__section-title">Anthropic API キー</div>
       <div class="settings__row">
         <span v-if="configured" class="settings__configured">設定済み ✓</span>
@@ -58,6 +74,8 @@ const apiKeyInput = ref('')
 const playerList = ref<string[]>([])
 const defaultPlayerInput = ref('')
 const appVersion = ref('')
+const minPlayerMatchesInput = ref(1)
+const minDeckMatchesInput = ref(1)
 
 onMounted(async () => {
   try {
@@ -70,6 +88,8 @@ onMounted(async () => {
     playerList.value = players
     defaultPlayerInput.value = s.default_player ?? ''
     appVersion.value = health?.data?.version ?? ''
+    minPlayerMatchesInput.value = s.min_player_matches ?? 1
+    minDeckMatchesInput.value = s.min_deck_matches ?? 1
   } catch {
     showError('設定の取得に失敗しました')
   }
@@ -79,6 +99,18 @@ async function saveDefaultPlayer() {
   try {
     await updateSettings({ default_player: defaultPlayerInput.value || null })
     showSuccess('デフォルトプレイヤーを保存しました')
+  } catch {
+    showError('保存に失敗しました')
+  }
+}
+
+async function saveMinMatches() {
+  try {
+    await updateSettings({
+      min_player_matches: Math.max(0, minPlayerMatchesInput.value),
+      min_deck_matches: Math.max(0, minDeckMatchesInput.value),
+    })
+    showSuccess('最低試合数を保存しました')
   } catch {
     showError('保存に失敗しました')
   }
@@ -212,6 +244,25 @@ async function removeApiKey() {
 
 .settings__note a {
   color: #4a6fa5;
+}
+
+.settings__inline-label {
+  font-size: 13px;
+  color: #2c2416;
+  white-space: nowrap;
+  width: 80px;
+  display: inline-block;
+}
+
+.settings__number-input {
+  width: 72px;
+  padding: 6px 10px;
+  border: 1px solid #c8b89a;
+  border-radius: 4px;
+  font-size: 13px;
+  background: #fff;
+  color: #2c2416;
+  font-family: inherit;
 }
 
 .settings__version {

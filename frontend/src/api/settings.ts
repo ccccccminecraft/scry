@@ -5,6 +5,8 @@ export interface SettingsResponse {
   api_key_configured: boolean
   quick_import_folder: string | null
   default_player: string | null
+  min_player_matches: number
+  min_deck_matches: number
 }
 
 export async function fetchSettings(): Promise<SettingsResponse> {
@@ -17,6 +19,8 @@ export async function updateSettings(body: {
   api_key?: string
   quick_import_folder?: string | null
   default_player?: string | null
+  min_player_matches?: number | null
+  min_deck_matches?: number | null
 }): Promise<void> {
   await client.put('/api/settings', body)
 }

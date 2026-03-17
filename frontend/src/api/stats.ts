@@ -62,8 +62,10 @@ export async function fetchFormats(): Promise<string[]> {
   return res.data.formats
 }
 
-export async function fetchPlayers(): Promise<string[]> {
-  const res = await client.get<{ players: string[] }>('/api/stats/players')
+export async function fetchPlayers(minMatches?: number): Promise<string[]> {
+  const res = await client.get<{ players: string[] }>('/api/stats/players', {
+    params: minMatches !== undefined ? { min_matches: minMatches } : undefined,
+  })
   return res.data.players
 }
 
@@ -74,16 +76,16 @@ export async function fetchOpponents(player: string): Promise<string[]> {
   return res.data.opponents
 }
 
-export async function fetchPlayerDecks(player: string, format?: string): Promise<string[]> {
+export async function fetchPlayerDecks(player: string, format?: string, minMatches?: number): Promise<string[]> {
   const res = await client.get<{ player_decks: string[] }>('/api/stats/player-decks', {
-    params: { player, format },
+    params: { player, format, min_matches: minMatches },
   })
   return res.data.player_decks
 }
 
-export async function fetchOpponentDecks(player: string, opponent?: string, format?: string): Promise<string[]> {
+export async function fetchOpponentDecks(player: string, opponent?: string, format?: string, minMatches?: number): Promise<string[]> {
   const res = await client.get<{ opponent_decks: string[] }>('/api/stats/opponent-decks', {
-    params: { player, opponent, format },
+    params: { player, opponent, format, min_matches: minMatches },
   })
   return res.data.opponent_decks
 }

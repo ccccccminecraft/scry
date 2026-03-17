@@ -17,12 +17,15 @@ router = APIRouter()
 
 
 @router.get("/stats/players")
-def get_players(db: Session = Depends(get_db)):
+def get_players(
+    min_matches: int = Query(default=1, ge=0),
+    db: Session = Depends(get_db),
+):
     """プレイヤー名の一覧を試合数の多い順で返す。"""
-    from sqlalchemy import func
     rows = (
         db.query(MatchPlayer.player_name, func.count().label("match_count"))
         .group_by(MatchPlayer.player_name)
+        .having(func.count() >= min_matches)
         .order_by(func.count().desc())
         .all()
     )
@@ -59,6 +62,7 @@ def get_opponent_decks(
     player: str = Query(...),
     opponent: str | None = Query(default=None),
     format: str | None = Query(default=None),
+    min_matches: int = Query(default=1, ge=0),
     db: Session = Depends(get_db),
 ):
     """指定プレイヤーの対戦相手が使用したデッキ一覧を返す。"""
@@ -68,19 +72,21 @@ def get_opponent_decks(
         .subquery()
     )
     q = (
-        db.query(MatchPlayer.deck_name)
+        db.query(MatchPlayer.deck_name, func.count().label("match_count"))
         .join(Match, Match.id == MatchPlayer.match_id)
         .filter(
             MatchPlayer.match_id.in_(player_matches),
             MatchPlayer.player_name != player,
             MatchPlayer.deck_name.isnot(None),
         )
+        .group_by(MatchPlayer.deck_name)
+        .having(func.count() >= min_matches)
     )
     if opponent:
         q = q.filter(MatchPlayer.player_name == opponent)
     if format:
         q = q.filter(Match.format == format)
-    rows = q.distinct().order_by(MatchPlayer.deck_name).all()
+    rows = q.order_by(MatchPlayer.deck_name).all()
     return {"opponent_decks": [r[0] for r in rows]}
 
 
@@ -88,20 +94,23 @@ def get_opponent_decks(
 def get_player_decks(
     player: str = Query(...),
     format: str | None = Query(default=None),
+    min_matches: int = Query(default=1, ge=0),
     db: Session = Depends(get_db),
 ):
     """指定プレイヤー自身が使用したデッキ一覧を返す。"""
     q = (
-        db.query(MatchPlayer.deck_name)
+        db.query(MatchPlayer.deck_name, func.count().label("match_count"))
         .join(Match, Match.id == MatchPlayer.match_id)
         .filter(
             MatchPlayer.player_name == player,
             MatchPlayer.deck_name.isnot(None),
         )
+        .group_by(MatchPlayer.deck_name)
+        .having(func.count() >= min_matches)
     )
     if format:
         q = q.filter(Match.format == format)
-    rows = q.distinct().order_by(MatchPlayer.deck_name).all()
+    rows = q.order_by(MatchPlayer.deck_name).all()
     return {"player_decks": [r[0] for r in rows]}
 
 

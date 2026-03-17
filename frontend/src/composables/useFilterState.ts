@@ -19,6 +19,10 @@ const deckList = ref<string[]>([])
 const opponentDeckList = ref<string[]>([])
 const formatList = ref<string[]>([])
 
+// settings から取得した最低試合数
+const minPlayerMatches = ref(1)
+const minDeckMatches = ref(1)
+
 // ── private loaders ───────────────────────────────────────────────────────────
 
 async function _loadAllLists() {
@@ -31,8 +35,8 @@ async function _loadAllLists() {
   try {
     const [opps, decks, oppDecks] = await Promise.all([
       fetchOpponents(player.value),
-      fetchPlayerDecks(player.value, format.value || undefined),
-      fetchOpponentDecks(player.value, opponent.value || undefined, format.value || undefined),
+      fetchPlayerDecks(player.value, format.value || undefined, minDeckMatches.value),
+      fetchOpponentDecks(player.value, opponent.value || undefined, format.value || undefined, minDeckMatches.value),
     ])
     opponentList.value = opps
     deckList.value = decks
@@ -44,7 +48,7 @@ async function _loadOpponentDeckList() {
   if (!player.value) { opponentDeckList.value = []; return }
   try {
     opponentDeckList.value = await fetchOpponentDecks(
-      player.value, opponent.value || undefined, format.value || undefined,
+      player.value, opponent.value || undefined, format.value || undefined, minDeckMatches.value,
     )
   } catch { /* ignore */ }
 }
@@ -53,8 +57,8 @@ async function _loadDeckAndOpponentDeckList() {
   if (!player.value) { deckList.value = []; opponentDeckList.value = []; return }
   try {
     const [decks, oppDecks] = await Promise.all([
-      fetchPlayerDecks(player.value, format.value || undefined),
-      fetchOpponentDecks(player.value, opponent.value || undefined, format.value || undefined),
+      fetchPlayerDecks(player.value, format.value || undefined, minDeckMatches.value),
+      fetchOpponentDecks(player.value, opponent.value || undefined, format.value || undefined, minDeckMatches.value),
     ])
     deckList.value = decks
     opponentDeckList.value = oppDecks
@@ -101,9 +105,12 @@ export function useFilterState() {
    */
   async function init(): Promise<boolean> {
     try {
-      const [players, formats, settings] = await Promise.all([
-        fetchPlayers(), fetchFormats(), fetchSettings(),
+      const [formats, settings] = await Promise.all([
+        fetchFormats(), fetchSettings(),
       ])
+      minPlayerMatches.value = settings.min_player_matches ?? 1
+      minDeckMatches.value = settings.min_deck_matches ?? 1
+      const players = await fetchPlayers(minPlayerMatches.value)
       playerList.value = players
       formatList.value = formats
       if (!player.value && players.length > 0) {

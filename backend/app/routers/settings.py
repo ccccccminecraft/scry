@@ -30,6 +30,8 @@ class SettingsInput(BaseModel):
     api_key: str | None = None
     quick_import_folder: str | None = None
     default_player: str | None = None
+    min_player_matches: int | None = None
+    min_deck_matches: int | None = None
 
 
 @router.get("/settings")
@@ -37,11 +39,15 @@ def get_settings(db: Session = Depends(get_db)):
     provider = db.get(Setting, "llm_provider")
     folder = db.get(Setting, "quick_import_folder")
     default_player = db.get(Setting, "default_player")
+    min_player = db.get(Setting, "min_player_matches")
+    min_deck = db.get(Setting, "min_deck_matches")
     return {
         "llm_provider": provider.value if provider else "claude",
         "api_key_configured": get_api_key(db) is not None,
         "quick_import_folder": folder.value if folder else None,
         "default_player": default_player.value if default_player else None,
+        "min_player_matches": int(min_player.value) if min_player else 1,
+        "min_deck_matches": int(min_deck.value) if min_deck else 1,
     }
 
 
@@ -81,6 +87,22 @@ def put_settings(body: SettingsInput, db: Session = Depends(get_db)):
             s.value = body.default_player
         else:
             db.add(Setting(key="default_player", value=body.default_player))
+
+    if body.min_player_matches is not None:
+        s = db.get(Setting, "min_player_matches")
+        val = str(max(0, body.min_player_matches))
+        if s:
+            s.value = val
+        else:
+            db.add(Setting(key="min_player_matches", value=val))
+
+    if body.min_deck_matches is not None:
+        s = db.get(Setting, "min_deck_matches")
+        val = str(max(0, body.min_deck_matches))
+        if s:
+            s.value = val
+        else:
+            db.add(Setting(key="min_deck_matches", value=val))
 
     db.commit()
     return {"ok": True}
