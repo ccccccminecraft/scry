@@ -113,12 +113,12 @@
               class="stats__card-tab"
               :class="{ 'stats__card-tab--active': cardStatsPerspective === 'self' }"
               @click="cardStatsPerspective = 'self'"
-            >自分（Top {{ cardStats.length }}）</button>
+            >選択プレイヤー（Top {{ cardStats.length }}）</button>
             <button
               class="stats__card-tab"
               :class="{ 'stats__card-tab--active': cardStatsPerspective === 'opponent' }"
               @click="cardStatsPerspective = 'opponent'"
-            >相手（Top {{ opponentCardStats.length }}）</button>
+            >対戦相手（Top {{ opponentCardStats.length }}）</button>
           </div>
           <table class="stats__table" v-if="activeCardStats.length > 0">
             <thead>
@@ -131,7 +131,7 @@
                   登場ゲーム <span class="stats__sort-icon">{{ sortIcon('game_count') }}</span>
                 </th>
                 <th class="stats__th-num stats__th-sort" @click="toggleSort('win_rate')">
-                  {{ cardStatsPerspective === 'self' ? '勝率' : '自分の勝率' }}
+                  {{ cardStatsPerspective === 'self' ? '勝率' : '選択プレイヤー勝率' }}
                   <span class="stats__sort-icon">{{ sortIcon('win_rate') }}</span>
                 </th>
               </tr>
