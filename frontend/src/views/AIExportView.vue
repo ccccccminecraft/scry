@@ -7,6 +7,13 @@
       <div class="ai-export__section-label">フィルター</div>
       <div class="ai-export__filters">
         <div class="ai-export__group">
+          <label class="ai-export__label">フォーマット</label>
+          <select v-model="formatModel" class="ai-export__select">
+            <option value="">すべて</option>
+            <option v-for="f in formatList" :key="f" :value="f">{{ f }}</option>
+          </select>
+        </div>
+        <div class="ai-export__group">
           <label class="ai-export__label">プレイヤー</label>
           <select v-model="playerModel" class="ai-export__select">
             <option v-for="p in playerList" :key="p" :value="p">{{ p }}</option>
@@ -31,13 +38,6 @@
           <select v-model="opponentDeck" class="ai-export__select">
             <option value="">すべて</option>
             <option v-for="d in opponentDeckList" :key="d" :value="d">{{ d }}</option>
-          </select>
-        </div>
-        <div class="ai-export__group">
-          <label class="ai-export__label">フォーマット</label>
-          <select v-model="formatModel" class="ai-export__select">
-            <option value="">すべて</option>
-            <option v-for="f in formatList" :key="f" :value="f">{{ f }}</option>
           </select>
         </div>
         <div class="ai-export__group">

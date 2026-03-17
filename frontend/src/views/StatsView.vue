@@ -5,6 +5,13 @@
     </div>
     <div class="stats__filters">
       <div class="stats__filter-group">
+        <label class="stats__label">フォーマット</label>
+        <select v-model="formatModel" class="stats__select">
+          <option value="">すべて</option>
+          <option v-for="f in formatList" :key="f" :value="f">{{ f }}</option>
+        </select>
+      </div>
+      <div class="stats__filter-group">
         <label class="stats__label">プレイヤー</label>
         <select v-model="playerModel" class="stats__select">
           <option v-for="p in playerList" :key="p" :value="p">{{ p }}</option>
@@ -29,13 +36,6 @@
         <select v-model="opponentDeck" class="stats__select">
           <option value="">すべて</option>
           <option v-for="d in opponentDeckList" :key="d" :value="d">{{ d }}</option>
-        </select>
-      </div>
-      <div class="stats__filter-group">
-        <label class="stats__label">フォーマット</label>
-        <select v-model="formatModel" class="stats__select">
-          <option value="">すべて</option>
-          <option v-for="f in formatList" :key="f" :value="f">{{ f }}</option>
         </select>
       </div>
       <div class="stats__filter-group">

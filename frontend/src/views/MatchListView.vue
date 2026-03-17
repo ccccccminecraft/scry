@@ -7,6 +7,13 @@
     <!-- フィルターバー -->
     <div class="match-list__filters">
       <div class="filter-group">
+        <label class="filter-label">フォーマット</label>
+        <select v-model="formatModel" class="filter-select">
+          <option value="">すべて</option>
+          <option v-for="f in formatList" :key="f" :value="f">{{ f }}</option>
+        </select>
+      </div>
+      <div class="filter-group">
         <label class="filter-label">プレイヤー</label>
         <select v-model="playerModel" class="filter-select">
           <option value="">すべて</option>
@@ -32,13 +39,6 @@
         <select v-model="opponentDeck" class="filter-select" :disabled="!player">
           <option value="">すべて</option>
           <option v-for="d in opponentDeckList" :key="d" :value="d">{{ d }}</option>
-        </select>
-      </div>
-      <div class="filter-group">
-        <label class="filter-label">フォーマット</label>
-        <select v-model="formatModel" class="filter-select">
-          <option value="">すべて</option>
-          <option v-for="f in formatList" :key="f" :value="f">{{ f }}</option>
         </select>
       </div>
       <div class="filter-group">

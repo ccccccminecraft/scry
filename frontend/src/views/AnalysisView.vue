@@ -56,6 +56,13 @@
         <!-- フィルター行 -->
         <div class="analysis__filters">
           <div class="analysis__toolbar-group">
+            <label class="analysis__toolbar-label">フォーマット</label>
+            <select v-model="formatModel" class="analysis__select">
+              <option value="">（すべて）</option>
+              <option v-for="f in formatList" :key="f" :value="f">{{ f }}</option>
+            </select>
+          </div>
+          <div class="analysis__toolbar-group">
             <label class="analysis__toolbar-label">対戦相手</label>
             <select v-model="opponentModel" class="analysis__select">
               <option value="">（すべて）</option>
@@ -74,13 +81,6 @@
             <select v-model="opponentDeck" class="analysis__select">
               <option value="">（すべて）</option>
               <option v-for="d in opponentDeckList" :key="d" :value="d">{{ d }}</option>
-            </select>
-          </div>
-          <div class="analysis__toolbar-group">
-            <label class="analysis__toolbar-label">フォーマット</label>
-            <select v-model="formatModel" class="analysis__select">
-              <option value="">（すべて）</option>
-              <option v-for="f in formatList" :key="f" :value="f">{{ f }}</option>
             </select>
           </div>
           <div class="analysis__toolbar-group">
