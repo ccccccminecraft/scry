@@ -484,8 +484,8 @@ watch(filterOpponent, async () => {
 .analysis__toolbar {
   display: flex;
   align-items: flex-end;
-  gap: 16px;
-  padding: 12px 16px;
+  gap: 10px;
+  padding: 10px 16px;
   background: #fff;
   border-bottom: 1px solid #e0d8c8;
   flex-wrap: wrap;
@@ -503,10 +503,10 @@ watch(filterOpponent, async () => {
 }
 
 .analysis__select {
-  padding: 4px 8px;
+  padding: 3px 6px;
   border: 1px solid #c8b89a;
   border-radius: 4px;
-  font-size: 13px;
+  font-size: 11px;
   background: #fff;
   color: #2c2416;
 }
@@ -541,8 +541,8 @@ watch(filterOpponent, async () => {
 .analysis__filters {
   display: flex;
   align-items: flex-end;
-  gap: 12px;
-  padding: 10px 16px;
+  gap: 10px;
+  padding: 8px 16px;
   background: #faf7f0;
   border-bottom: 1px solid #e0d8c8;
   flex-wrap: wrap;
