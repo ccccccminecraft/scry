@@ -1,6 +1,6 @@
 <template>
   <nav class="nav">
-    <div class="nav__title">Scry</div>
+    <router-link to="/" class="nav__title">Scry</router-link>
     <router-link to="/matches" class="nav__item">対戦履歴</router-link>
     <router-link to="/stats" class="nav__item">統計</router-link>
     <router-link to="/analysis" class="nav__item">AI 分析</router-link>
@@ -28,6 +28,9 @@
   font-size: 1.1rem;
   font-weight: bold;
   padding: 0 16px 16px;
+  color: #f0ece0;
+  text-decoration: none;
+  cursor: pointer;
 }
 
 .nav__item {

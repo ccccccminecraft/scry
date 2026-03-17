@@ -8,14 +8,6 @@
       <span v-else class="status status--error">❌ Backend not connected</span>
     </div>
 
-    <div class="home__actions">
-      <button class="btn btn--primary" @click="$router.push('/import')">
-        ログをインポートする
-      </button>
-      <button class="btn btn--secondary" @click="$router.push('/matches')">
-        履歴を見る
-      </button>
-    </div>
   </div>
 </template>
 
@@ -27,7 +19,7 @@ const status = ref<'checking' | 'connected' | 'error'>('checking')
 
 onMounted(async () => {
   try {
-    await axios.get('http://localhost:8000/api/health')
+    await axios.get('http://localhost:18432/api/health')
     status.value = 'connected'
   } catch {
     status.value = 'error'
@@ -59,30 +51,4 @@ onMounted(async () => {
 .status--checking { color: #7a6a55; }
 .status--ok       { color: #5a7a4a; }
 .status--error    { color: #a03030; }
-
-.home__actions {
-  display: flex;
-  gap: 12px;
-}
-
-.btn {
-  padding: 10px 24px;
-  border: none;
-  border-radius: 4px;
-  font-size: 14px;
-  transition: background 0.15s;
-}
-
-.btn--primary {
-  background: #4a6fa5;
-  color: #fff;
-}
-.btn--primary:hover { background: #3a5f95; }
-
-.btn--secondary {
-  background: #faf7f0;
-  color: #2c2416;
-  border: 1px solid #c8b89a;
-}
-.btn--secondary:hover { background: #f0ece0; }
 </style>
