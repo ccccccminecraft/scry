@@ -9,7 +9,6 @@ GET    /api/deck-definitions/export       - JSONにエクスポート
 """
 from __future__ import annotations
 
-import os
 from datetime import datetime, timezone, timedelta
 
 import anthropic
@@ -196,14 +195,15 @@ Include 5–15 of the most prominent meta decks. Do not include any text outside
 
 
 @router.post("/deck-definitions/generate")
-async def generate_deck_definitions(body: DeckGenerateInput):
+async def generate_deck_definitions(body: DeckGenerateInput, db: Session = Depends(get_db)):
     """
     Claude API を使ってデッキ定義を自動生成する。
-    ANTHROPIC_API_KEY 環境変数が必要。
+    設定画面で登録した Anthropic API キーが必要。
     """
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    from app.routers.settings import get_api_key
+    api_key = get_api_key(db)
     if not api_key:
-        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY is not configured")
+        raise HTTPException(status_code=503, detail="Anthropic API キーが設定されていません")
 
     fmt_label = body.format or "any format"
     user_msg = f"Generate deck definitions for Magic: The Gathering {fmt_label} metagame."

@@ -711,7 +711,11 @@ onMounted(async () => {
 
 /* 生成プレビューモーダル */
 .deck-def__modal--wide {
-  width: min(860px, 92vw);
+  width: min(1100px, 92vw);
+}
+
+.deck-def__modal--wide .deck-def__modal-footer {
+  flex-wrap: wrap;
 }
 
 .deck-def__gen-meta {
