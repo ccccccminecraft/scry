@@ -2,7 +2,11 @@
   <div class="app">
     <GlobalNav />
     <main class="app__content">
-      <router-view />
+      <router-view v-slot="{ Component }">
+        <keep-alive :include="['MatchListView', 'StatsView', 'AnalysisView']">
+          <component :is="Component" />
+        </keep-alive>
+      </router-view>
     </main>
     <AppToast />
   </div>

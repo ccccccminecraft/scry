@@ -155,7 +155,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onActivated } from 'vue'
+
+defineOptions({ name: 'AnalysisView' })
 import { useToast } from '../composables/useToast'
 import { fetchSettings } from '../api/settings'
 import { fetchPlayers, fetchOpponents, fetchPlayerDecks, fetchOpponentDecks, fetchFormats } from '../api/stats'
@@ -246,7 +248,9 @@ async function scrollToBottom() {
 watch([messages, streamingContent], scrollToBottom)
 
 // ── 初期化 ────────────────────────────────────────────────────────────────
-onMounted(async () => {
+const _initialized = ref(false)
+
+async function initData() {
   try {
     const settings = await fetchSettings()
     apiKeyConfigured.value = settings.api_key_configured
@@ -262,20 +266,28 @@ onMounted(async () => {
     promptTemplates.value = templates
     questionSets.value = qSets
 
-    const defaultTemplate = templates.find(t => t.is_default) ?? templates[0]
-    if (defaultTemplate) selectedTemplateId.value = defaultTemplate.id
+    if (!_initialized.value) {
+      const defaultTemplate = templates.find(t => t.is_default) ?? templates[0]
+      if (defaultTemplate) selectedTemplateId.value = defaultTemplate.id
 
-    const defaultSet = qSets.find(s => s.is_default) ?? qSets[0]
-    if (defaultSet) selectedSetId.value = defaultSet.id
+      const defaultSet = qSets.find(s => s.is_default) ?? qSets[0]
+      if (defaultSet) selectedSetId.value = defaultSet.id
 
-    if (playerList.length > 0) {
-      selectedPlayer.value = playerList[0]
-      // watch(selectedPlayer) が loadSessions + loadFilterOptions + resetFilters を呼ぶ
+      if (playerList.length > 0) {
+        selectedPlayer.value = playerList[0]
+        // watch(selectedPlayer) が loadSessions + loadFilterOptions + resetFilters を呼ぶ
+      }
+      _initialized.value = true
+    } else if (selectedPlayer.value) {
+      await loadSessions()
     }
   } catch {
     showError('初期化に失敗しました')
   }
-})
+}
+
+onMounted(initData)
+onActivated(initData)
 
 // ── セッション管理 ────────────────────────────────────────────────────────
 async function loadSessions() {

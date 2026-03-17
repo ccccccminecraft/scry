@@ -136,7 +136,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onActivated } from 'vue'
+
+defineOptions({ name: 'StatsView' })
 import { useToast } from '../composables/useToast'
 import {
   fetchStats, fetchCardStats, fetchPlayers, fetchOpponents, fetchOpponentDecks, fetchFormats,
@@ -274,19 +276,24 @@ watch([selectedDeck, selectedOpponentDeck, selectedFormat, dateFrom, dateTo], ()
   loadAll()
 })
 
-onMounted(async () => {
+async function initLists() {
   try {
     const [players, formats] = await Promise.all([fetchPlayers(), fetchFormats()])
     playerList.value = players
     formatList.value = formats
-    if (playerList.value.length > 0) {
+    if (!selectedPlayer.value && playerList.value.length > 0) {
       selectedPlayer.value = playerList.value[0]
       // watch が発火するので loadAll/loadOpponents は不要
+    } else if (selectedPlayer.value) {
+      loadAll()
     }
   } catch {
     showError('初期データの取得に失敗しました')
   }
-})
+}
+
+onMounted(initLists)
+onActivated(initLists)
 </script>
 
 <style scoped>

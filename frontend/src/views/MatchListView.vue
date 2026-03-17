@@ -193,7 +193,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onActivated } from 'vue'
+
+defineOptions({ name: 'MatchListView' })
 import { fetchMatches, fetchExportCount, fetchExportMarkdown, type MatchSummary, type ExportDetailLevel } from '../api/matches'
 import { fetchPlayers, fetchOpponents, fetchPlayerDecks, fetchOpponentDecks, fetchFormats } from '../api/stats'
 import { useToast } from '../composables/useToast'
@@ -460,7 +462,7 @@ function formatDate(iso: string): string {
   })
 }
 
-onMounted(async () => {
+async function initData() {
   try {
     const [players, formats] = await Promise.all([fetchPlayers(), fetchFormats()])
     playerList.value = players
@@ -469,7 +471,10 @@ onMounted(async () => {
     showError('フィルター情報の取得に失敗しました')
   }
   load()
-})
+}
+
+onMounted(initData)
+onActivated(initData)
 </script>
 
 <style scoped>
