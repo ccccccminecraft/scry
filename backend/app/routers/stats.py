@@ -304,40 +304,22 @@ def _calc_deck_stats(db: Session, player: str, match_id_list: list[str]) -> list
     ]
 
 
-@router.get("/stats/cards")
-def get_card_stats(
-    player: str = Query(...),
-    opponent: str | None = Query(default=None),
-    deck: str | None = Query(default=None),
-    opponent_deck: str | None = Query(default=None),
-    format: str | None = Query(default=None),
-    date_from: str | None = Query(default=None, description="YYYY-MM-DD"),
-    date_to: str | None = Query(default=None, description="YYYY-MM-DD"),
-    limit: int = Query(default=20, ge=1, le=100),
-    perspective: str = Query(default="self", description="self or opponent"),
-    db: Session = Depends(get_db),
-):
-    """カード別統計（play/cast のみ）を返す。perspective=self で自分、opponent で相手のカードを集計。"""
-    match_id_list = _build_match_id_list(db, player, opponent, deck, opponent_deck, format, date_from, date_to)
-
-    if not match_id_list:
-        return {"cards": []}
-
-    # 対象マッチのゲームIDを取得
-    game_ids = [
-        r[0] for r in db.query(Game.id).filter(Game.match_id.in_(match_id_list)).all()
-    ]
-
+def _calc_card_stats(
+    db: Session,
+    player: str,
+    game_ids: list[int],
+    perspective: str,
+    limit: int = 20,
+) -> list[dict]:
+    """game_ids を対象にカード別統計を集計する。勝率は常に player 視点。"""
     if not game_ids:
-        return {"cards": []}
+        return []
 
-    # 集計対象プレイヤーフィルター
     if perspective == "opponent":
         player_filter = Action.player_name != player
     else:
         player_filter = Action.player_name == player
 
-    # play/cast アクションを card_name でグループ集計
     rows = (
         db.query(
             Action.card_name,
@@ -361,9 +343,8 @@ def get_card_stats(
     game_count_map = {r[0]: r[2] for r in rows}
 
     if not card_names:
-        return {"cards": []}
+        return []
 
-    # カードが登場したゲームの winner を集計（勝率は常に選択プレイヤー視点）
     game_rows = (
         db.query(Action.card_name, Action.game_id, Game.winner)
         .join(Game, Game.id == Action.game_id)
@@ -398,7 +379,33 @@ def get_card_stats(
             "game_count": game_count_map[name],
             "win_rate": wins / total if total else 0.0,
         })
+    return cards
 
+
+@router.get("/stats/cards")
+def get_card_stats(
+    player: str = Query(...),
+    opponent: str | None = Query(default=None),
+    deck: str | None = Query(default=None),
+    opponent_deck: str | None = Query(default=None),
+    format: str | None = Query(default=None),
+    date_from: str | None = Query(default=None, description="YYYY-MM-DD"),
+    date_to: str | None = Query(default=None, description="YYYY-MM-DD"),
+    limit: int = Query(default=20, ge=1, le=100),
+    perspective: str = Query(default="self", description="self or opponent"),
+    db: Session = Depends(get_db),
+):
+    """カード別統計（play/cast のみ）を返す。perspective=self で自分、opponent で相手のカードを集計。"""
+    match_id_list = _build_match_id_list(db, player, opponent, deck, opponent_deck, format, date_from, date_to)
+
+    if not match_id_list:
+        return {"cards": []}
+
+    game_ids = [
+        r[0] for r in db.query(Game.id).filter(Game.match_id.in_(match_id_list)).all()
+    ]
+
+    cards = _calc_card_stats(db, player, game_ids, perspective, limit)
     return {"cards": cards}
 
 

@@ -90,6 +90,7 @@ export type ExportDetailLevel = 'summary' | 'matches' | 'actions'
 export interface ExportParams extends MatchFilters {
   detail_level: ExportDetailLevel
   limit: number
+  no_limit?: boolean
 }
 
 export async function fetchExportCount(filters: MatchFilters): Promise<number> {

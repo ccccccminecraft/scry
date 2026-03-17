@@ -6,6 +6,7 @@ import MatchDetailView from '../views/MatchDetailView.vue'
 import StatsView from '../views/StatsView.vue'
 import DeckDefinitionsView from '../views/DeckDefinitionsView.vue'
 import AnalysisView from '../views/AnalysisView.vue'
+import AIExportView from '../views/AIExportView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import PresetsView from '../views/PresetsView.vue'
 import PromptTemplateEditView from '../views/PromptTemplateEditView.vue'
@@ -22,6 +23,7 @@ const router = createRouter({
     { path: '/stats',                                   component: StatsView },
     { path: '/decks',                                   component: DeckDefinitionsView },
     { path: '/analysis',                                component: AnalysisView },
+    { path: '/export',                                  component: AIExportView },
     { path: '/settings',                                component: SettingsView },
     { path: '/presets',                                 component: PresetsView },
     { path: '/presets/templates/new',                   component: PromptTemplateEditView },

@@ -157,13 +157,15 @@ def export_matches(
     date_to: str | None = Query(default=None),
     detail_level: str = Query(default="matches"),
     limit: int = Query(default=200, ge=1, le=1000),
+    no_limit: bool = Query(default=False),
     db: Session = Depends(get_db),
 ):
     """対戦データを Markdown 形式でエクスポートする。"""
     from app.routers.stats import _build_match_id_list, _calc_deck_stats
 
     match_ids = _build_match_id_list(db, player, opponent, deck, opponent_deck, format, date_from, date_to)
-    markdown = _build_export_markdown(player, db, match_ids, detail_level, limit,
+    effective_limit = None if no_limit else limit
+    markdown = _build_export_markdown(player, db, match_ids, detail_level, effective_limit,
                                       opponent, deck, opponent_deck, format, date_from, date_to)
 
     from datetime import datetime as dt
@@ -181,7 +183,7 @@ def _build_export_markdown(
     db: Session,
     match_ids: list[str],
     detail_level: str,
-    limit: int,
+    limit: int | None,
     opponent: str | None,
     deck: str | None,
     opponent_deck: str | None,
@@ -194,7 +196,7 @@ def _build_export_markdown(
 
     now_str = dt.now().strftime("%Y-%m-%d %H:%M")
     total_count = len(match_ids)
-    output_count = min(limit, total_count)
+    output_count = total_count if limit is None else min(limit, total_count)
 
     filter_parts = []
     if opponent:
@@ -275,19 +277,46 @@ def _build_export_markdown(
             lines.append(f"| {d['deck_name']} | {d['matches']} | {d['win_rate']:.1%} |")
         lines.append("")
 
+    # ── カード統計 ────────────────────────────────────────────────────────
+    from app.routers.stats import _calc_card_stats
+
+    self_cards = _calc_card_stats(db, player, game_ids, "self", limit=20)
+    opp_cards  = _calc_card_stats(db, player, game_ids, "opponent", limit=20)
+
+    if self_cards:
+        lines += [
+            "### カード統計（選択プレイヤー Top 20）",
+            "",
+            "| カード名 | 使用回数 | 登場ゲーム | 勝率 |",
+            "|---------|---------|-----------|------|",
+        ]
+        for c in self_cards:
+            lines.append(f"| {c['card_name']} | {c['play_count']} | {c['game_count']} | {c['win_rate']:.1%} |")
+        lines.append("")
+
+    if opp_cards:
+        lines += [
+            "### カード統計（対戦相手 Top 20）",
+            "",
+            "| カード名 | 使用回数 | 登場ゲーム | 選択プレイヤー勝率 |",
+            "|---------|---------|-----------|-----------------|",
+        ]
+        for c in opp_cards:
+            lines.append(f"| {c['card_name']} | {c['play_count']} | {c['game_count']} | {c['win_rate']:.1%} |")
+        lines.append("")
+
     if detail_level == "summary":
         return "\n".join(lines)
 
     # ── マッチ一覧 ────────────────────────────────────────────────────────
     lines += ["---", "", "## 対戦一覧", ""]
 
-    target_matches = (
+    q = (
         db.query(Match)
         .filter(Match.id.in_(match_ids))
         .order_by(Match.played_at.desc())
-        .limit(limit)
-        .all()
     )
+    target_matches = q.limit(limit).all() if limit is not None else q.all()
 
     for i, m in enumerate(target_matches, 1):
         date_str = m.played_at.strftime("%Y-%m-%d %H:%M")
