@@ -7,6 +7,7 @@
       <span v-else-if="status === 'connected'" class="status status--ok">✅ Backend connected</span>
       <span v-else class="status status--error">❌ Backend not connected</span>
     </div>
+    <div v-if="version" class="home__version">v{{ version }}</div>
 
   </div>
 </template>
@@ -16,11 +17,13 @@ import { ref, onMounted } from 'vue'
 import axios from 'axios'
 
 const status = ref<'checking' | 'connected' | 'error'>('checking')
+const version = ref('')
 
 onMounted(async () => {
   try {
-    await axios.get('http://localhost:18432/api/health')
+    const res = await axios.get('http://localhost:18432/api/health')
     status.value = 'connected'
+    version.value = res.data.version ?? ''
   } catch {
     status.value = 'error'
   }
@@ -51,4 +54,9 @@ onMounted(async () => {
 .status--checking { color: #7a6a55; }
 .status--ok       { color: #5a7a4a; }
 .status--error    { color: #a03030; }
+
+.home__version {
+  font-size: 0.85rem;
+  color: #a09080;
+}
 </style>

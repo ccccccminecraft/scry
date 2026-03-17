@@ -40,11 +40,13 @@
         入力したキーはローカルの SQLite データベースに保存されます。
       </p>
     </div>
+    <div v-if="appVersion" class="settings__version">v{{ appVersion }}</div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import axios from 'axios'
 import { useToast } from '../composables/useToast'
 import { fetchSettings, updateSettings, deleteApiKey } from '../api/settings'
 import { fetchPlayers } from '../api/stats'
@@ -55,13 +57,19 @@ const configured = ref(false)
 const apiKeyInput = ref('')
 const playerList = ref<string[]>([])
 const defaultPlayerInput = ref('')
+const appVersion = ref('')
 
 onMounted(async () => {
   try {
-    const [s, players] = await Promise.all([fetchSettings(), fetchPlayers()])
+    const [s, players, health] = await Promise.all([
+      fetchSettings(),
+      fetchPlayers(),
+      axios.get('http://localhost:18432/api/health').catch(() => null),
+    ])
     configured.value = s.api_key_configured
     playerList.value = players
     defaultPlayerInput.value = s.default_player ?? ''
+    appVersion.value = health?.data?.version ?? ''
   } catch {
     showError('設定の取得に失敗しました')
   }
@@ -205,5 +213,11 @@ async function removeApiKey() {
 
 .settings__note a {
   color: #4a6fa5;
+}
+
+.settings__version {
+  font-size: 11px;
+  color: #a09080;
+  text-align: right;
 }
 </style>
