@@ -2,7 +2,7 @@
 
 ## 基本仕様
 
-- ベース URL: `http://localhost:8000`
+- ベース URL: `http://localhost:18432`
 - フォーマット: JSON
 - 文字コード: UTF-8
 
@@ -231,10 +231,13 @@ files: <.dat ファイル>[]   ← 複数ファイル
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|----|------------|------|
-| `player` | string | - | 対象プレイヤー名（省略時は全体） |
+| `player` | string | 必須 | 対象プレイヤー名 |
 | `opponent` | string | - | 対戦相手名でフィルタ |
-| `deck` | string | - | デッキ名でフィルタ（`deck_name` が NULL のマッチは除外） |
-| `game_plan` | string | - | ゲームプランでフィルタ（`aggro` / `midrange` / `control` / `combo`。`game_plan` が NULL のマッチは除外） |
+| `deck` | string | - | 自分のデッキ名でフィルタ |
+| `opponent_deck` | string | - | 相手のデッキ名でフィルタ |
+| `format` | string | - | フォーマットでフィルタ |
+| `date_from` | string | - | 対戦日時の開始日（YYYY-MM-DD） |
+| `date_to` | string | - | 対戦日時の終了日（YYYY-MM-DD、当日を含む） |
 | `history_size` | int | 20 | 勝率推移グラフの対象マッチ数（直近 N マッチ） |
 
 **フィールド定義**
@@ -261,22 +264,13 @@ files: <.dat ファイル>[]   ← 複数ファイル
     { "date": "2024-01-02", "match_index": 2, "won": false }
   ],
   "deck_stats": [
-    { "deck_name": "Modern Burn", "game_plan": "aggro", "matches": 60, "win_rate": 0.617 },
-    { "deck_name": "Amulet Titan", "game_plan": "combo", "matches": 60, "win_rate": 0.550 }
-  ],
-  "game_plan_stats": [
-    { "game_plan": "aggro", "matches": 60, "win_rate": 0.617 },
-    { "game_plan": "combo", "matches": 60, "win_rate": 0.550 }
-  ],
-  "opponent_stats": [
-    { "player_name": "OpponentA", "matches": 15, "win_rate": 0.667 }
+    { "deck_name": "Modern Burn", "matches": 60, "win_rate": 0.617 },
+    { "deck_name": "Amulet Titan", "matches": 60, "win_rate": 0.550 }
   ]
 }
 ```
 
-- `deck_stats` / `game_plan_stats` / `opponent_stats` はプレイヤー別集計時のみ含まれる（全体集計時は空配列）
-- `deck_stats` / `game_plan_stats` は `deck_name` / `game_plan` が NULL のマッチを除外して集計する
-- `game_plan` フィールドは未設定の場合 `null` を返す（空文字列は使用しない）
+- `deck_stats` は `deck_name` が NULL のマッチを除外して集計する
 
 ---
 
@@ -416,14 +410,21 @@ OS キーストアから API キーを削除する。
 
 ### GET /api/stats/cards
 
-プレイヤーのカード別統計を返す。`actions` テーブルの `play` / `cast` アクションを集計する。
+カード別統計を返す。`actions` テーブルの `play` / `cast` アクションを集計する。`perspective` パラメータで自分・相手どちらのカードを集計するか切り替えられる。
 
 **クエリパラメータ**
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|----|------------|------|
 | `player` | string | 必須 | 対象プレイヤー名 |
+| `opponent` | string | - | 対戦相手名でフィルタ |
+| `deck` | string | - | 自分のデッキ名でフィルタ |
+| `opponent_deck` | string | - | 相手のデッキ名でフィルタ |
+| `format` | string | - | フォーマットでフィルタ |
+| `date_from` | string | - | 対戦日時の開始日（YYYY-MM-DD） |
+| `date_to` | string | - | 対戦日時の終了日（YYYY-MM-DD、当日を含む） |
 | `limit` | int | 20 | 返却件数上限（プレイ頻度順） |
+| `perspective` | string | `self` | `self`：自分が使ったカード / `opponent`：相手が使ったカード |
 
 **レスポンス**
 
@@ -444,7 +445,7 @@ OS キーストアから API キーを削除する。
 |------------|------|
 | `play_count` | そのカードを cast / play した総アクション数 |
 | `game_count` | そのカードが登場したゲーム数 |
-| `win_rate` | そのカードが登場したゲームの勝率 |
+| `win_rate` | そのカードが登場したゲームにおける **選択プレイヤー（`player`）の勝率**（`perspective` に関わらず常に同じ視点） |
 
 ---
 
