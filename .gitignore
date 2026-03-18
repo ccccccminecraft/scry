@@ -1,6 +1,7 @@
 # Database
 database/*
 docs/sample_data/
+docs/dek_sample_data/
 
 # Frontend
 frontend/node_modules/
