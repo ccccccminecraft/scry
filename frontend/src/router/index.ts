@@ -9,6 +9,7 @@ import AnalysisView from '../views/AnalysisView.vue'
 import AIExportView from '../views/AIExportView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import PresetsView from '../views/PresetsView.vue'
+import DeckBuilderView from '../views/DeckBuilderView.vue'
 import PromptTemplateEditView from '../views/PromptTemplateEditView.vue'
 import QuestionSetEditView from '../views/QuestionSetEditView.vue'
 
@@ -24,6 +25,7 @@ const router = createRouter({
     { path: '/decks',                                   component: DeckDefinitionsView },
     { path: '/analysis',                                component: AnalysisView },
     { path: '/export',                                  component: AIExportView },
+    { path: '/deck-builder',                            component: DeckBuilderView },
     { path: '/settings',                                component: SettingsView },
     { path: '/presets',                                 component: PresetsView },
     { path: '/presets/templates/new',                   component: PromptTemplateEditView },

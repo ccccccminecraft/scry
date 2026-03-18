@@ -8,6 +8,7 @@ from models.analysis import (
     AnalysisMessage,
 )
 from models.deck import DeckDefinition, DeckDefinitionCard
+from models.decklist import Card, Deck, DeckVersion, DeckVersionCard
 
 __all__ = [
     "Match",
@@ -24,4 +25,8 @@ __all__ = [
     "AnalysisMessage",
     "DeckDefinition",
     "DeckDefinitionCard",
+    "Card",
+    "Deck",
+    "DeckVersion",
+    "DeckVersionCard",
 ]
