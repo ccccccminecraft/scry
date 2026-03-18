@@ -1,11 +1,11 @@
-# 詳細設計: AIエクスポート画面
+# 詳細設計: AI用エクスポート画面
 
 ## 対象ファイル
 
 | ファイル | 種別 | 内容 |
 |----------|------|------|
 | `frontend/src/views/AIExportView.vue` | 新規 | AIエクスポート専用画面 |
-| `frontend/src/components/GlobalNav.vue` | 編集 | ナビメニューに「AIエクスポート」追加 |
+| `frontend/src/components/GlobalNav.vue` | 編集 | ナビメニューに「AI用エクスポート」追加 |
 | `frontend/src/router/index.ts` | 編集 | `/ai-export` ルートを追加 |
 | `frontend/src/views/MatchListView.vue` | 編集 | 「AI用エクスポート」ボタン・モーダルを削除 |
 | `backend/app/routers/matches.py` | 編集 | `_build_export_markdown()` にカード統計セクションを追加 |
@@ -19,7 +19,7 @@
 現在の対戦履歴画面のモーダルUIをそのまま専用画面に移植する。
 
 ```
-[ページタイトル] AI エクスポート
+[ページタイトル] AI用エクスポート
 
 [フィルターセクション]
   プレイヤー    [select]
@@ -78,7 +78,7 @@
 
 ```
 AI 分析
-AIエクスポート   ← ここに追加
+AI用エクスポート   ← ここに追加
 インポート
 ```
 
@@ -171,7 +171,7 @@ opp_card_stats  = _calc_card_stats(db, player, game_ids, "opponent")
 
 ## 動作確認手順
 
-1. ナビメニューに「AIエクスポート」が AI分析の直後に表示されることを確認する
+1. ナビメニューに「AI用エクスポート」が AI分析の直後に表示されることを確認する
 2. `/ai-export` にアクセスし、プレイヤー・フィルターが正しく機能することを確認する
 3. 各詳細レベル（サマリー / マッチ一覧 / アクション詳細）でダウンロードし、Markdownの構成を確認する
 4. すべての詳細レベルでカード統計（選択プレイヤー・対戦相手）セクションが含まれることを確認する

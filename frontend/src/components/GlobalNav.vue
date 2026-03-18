@@ -4,7 +4,7 @@
     <router-link to="/matches" class="nav__item">対戦履歴</router-link>
     <router-link to="/stats" class="nav__item">統計</router-link>
     <router-link to="/analysis" class="nav__item">AI 分析</router-link>
-    <router-link to="/export" class="nav__item">エクスポート</router-link>
+    <router-link to="/export" class="nav__item">AI用エクスポート</router-link>
     <hr class="nav__divider" />
     <router-link to="/deck-builder" class="nav__item">デッキ管理</router-link>
     <router-link to="/decks" class="nav__item">デッキ定義</router-link>

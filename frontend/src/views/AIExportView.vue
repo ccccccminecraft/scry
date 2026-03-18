@@ -1,6 +1,6 @@
 <template>
   <div class="ai-export">
-    <h1 class="ai-export__title">エクスポート</h1>
+    <h1 class="ai-export__title">AI用エクスポート</h1>
 
     <!-- フィルター -->
     <div class="ai-export__section">
