@@ -305,6 +305,8 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted, watch } from 'vue'
+
+defineOptions({ name: 'DeckBuilderView' })
 import { useToast } from '../composables/useToast'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import {

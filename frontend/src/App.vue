@@ -3,7 +3,7 @@
     <GlobalNav />
     <main class="app__content">
       <router-view v-slot="{ Component }">
-        <keep-alive :include="['MatchListView', 'StatsView', 'AnalysisView']">
+        <keep-alive :include="['MatchListView', 'StatsView', 'AnalysisView', 'DeckBuilderView']">
           <component :is="Component" />
         </keep-alive>
       </router-view>
