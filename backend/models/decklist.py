@@ -23,6 +23,7 @@ class Deck(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     format: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     versions: Mapped[list["DeckVersion"]] = relationship(
         back_populates="deck", cascade="all, delete-orphan"
@@ -41,6 +42,7 @@ class DeckVersion(Base):
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)
     memo: Mapped[str | None] = mapped_column(Text, nullable=True)
     registered_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     deck: Mapped["Deck"] = relationship(back_populates="versions")
     cards: Mapped[list["DeckVersionCard"]] = relationship(

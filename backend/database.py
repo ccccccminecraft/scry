@@ -65,6 +65,19 @@ def init_db() -> None:
                 conn.execute(text("ALTER TABLE deck_definition_cards ADD COLUMN is_exclude INTEGER NOT NULL DEFAULT 0"))
                 conn.commit()
 
+        # decks / deck_versions: is_archived 列の追加
+        if "decks" in inspector.get_table_names():
+            cols = {c["name"] for c in inspector.get_columns("decks")}
+            if "is_archived" not in cols:
+                conn.execute(text("ALTER TABLE decks ADD COLUMN is_archived BOOLEAN NOT NULL DEFAULT 0"))
+                conn.commit()
+
+        if "deck_versions" in inspector.get_table_names():
+            cols = {c["name"] for c in inspector.get_columns("deck_versions")}
+            if "is_archived" not in cols:
+                conn.execute(text("ALTER TABLE deck_versions ADD COLUMN is_archived BOOLEAN NOT NULL DEFAULT 0"))
+                conn.commit()
+
         # analysis_sessions: フィルター列の追加
         if "analysis_sessions" in inspector.get_table_names():
             cols = {c["name"] for c in inspector.get_columns("analysis_sessions")}

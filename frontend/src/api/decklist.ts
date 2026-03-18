@@ -7,6 +7,7 @@ export interface Deck {
   name: string
   format: string | null
   created_at: string
+  is_archived: boolean
   latest_version: DeckVersionSummary | null
 }
 
@@ -17,6 +18,7 @@ export interface DeckVersionSummary {
   registered_at: string
   main_count: number
   side_count: number
+  is_archived: boolean
 }
 
 export interface CardEntry {
@@ -30,8 +32,8 @@ export interface DeckVersionDetail extends DeckVersionSummary {
   sideboard: CardEntry[]
 }
 
-export async function fetchDecks(): Promise<Deck[]> {
-  const res = await axios.get(`${BASE}/decklist/decks`)
+export async function fetchDecks(archived = false): Promise<Deck[]> {
+  const res = await axios.get(`${BASE}/decklist/decks`, { params: { archived } })
   return res.data
 }
 
@@ -47,6 +49,16 @@ export async function updateDeck(deckId: number, name: string, format: string | 
 
 export async function deleteDeck(deckId: number): Promise<void> {
   await axios.delete(`${BASE}/decklist/decks/${deckId}`)
+}
+
+export async function archiveDeck(deckId: number): Promise<Deck> {
+  const res = await axios.post(`${BASE}/decklist/decks/${deckId}/archive`)
+  return res.data
+}
+
+export async function unarchiveDeck(deckId: number): Promise<Deck> {
+  const res = await axios.post(`${BASE}/decklist/decks/${deckId}/unarchive`)
+  return res.data
 }
 
 export async function fetchVersions(deckId: number): Promise<DeckVersionSummary[]> {
@@ -97,6 +109,16 @@ export async function updateVersion(
 
 export async function deleteVersion(deckId: number, versionId: number): Promise<void> {
   await axios.delete(`${BASE}/decklist/decks/${deckId}/versions/${versionId}`)
+}
+
+export async function archiveVersion(deckId: number, versionId: number): Promise<DeckVersionSummary> {
+  const res = await axios.post(`${BASE}/decklist/decks/${deckId}/versions/${versionId}/archive`)
+  return res.data
+}
+
+export async function unarchiveVersion(deckId: number, versionId: number): Promise<DeckVersionSummary> {
+  const res = await axios.post(`${BASE}/decklist/decks/${deckId}/versions/${versionId}/unarchive`)
+  return res.data
 }
 
 export function cardImageUrl(scryfallId: string, size: 'small' | 'normal' = 'small'): string {

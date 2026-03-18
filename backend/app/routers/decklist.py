@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query, UploadFile, File
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import func
@@ -117,6 +117,7 @@ def _version_to_summary(v: DeckVersion) -> dict:
         "registered_at": v.registered_at.isoformat(),
         "main_count": main_count,
         "side_count": side_count,
+        "is_archived": bool(v.is_archived),
     }
 
 
@@ -174,9 +175,10 @@ class DeckInput(BaseModel):
 
 
 def _deck_to_dict(deck: Deck) -> dict:
+    active_versions = [v for v in deck.versions if not v.is_archived]
     latest = None
-    if deck.versions:
-        v = max(deck.versions, key=lambda x: x.version_number)
+    if active_versions:
+        v = max(active_versions, key=lambda x: x.version_number)
         latest = {
             "id": v.id,
             "version_number": v.version_number,
@@ -188,13 +190,19 @@ def _deck_to_dict(deck: Deck) -> dict:
         "name": deck.name,
         "format": deck.format,
         "created_at": deck.created_at.isoformat(),
+        "is_archived": bool(deck.is_archived),
         "latest_version": latest,
     }
 
 
 @router.get("/decklist/decks")
-def list_decks(db: Session = Depends(get_db)):
-    decks = db.query(Deck).order_by(Deck.created_at.desc()).all()
+def list_decks(archived: bool = Query(default=False), db: Session = Depends(get_db)):
+    decks = (
+        db.query(Deck)
+        .filter(Deck.is_archived == archived)
+        .order_by(Deck.created_at.desc())
+        .all()
+    )
     return [_deck_to_dict(d) for d in decks]
 
 
@@ -229,20 +237,38 @@ def delete_deck(deck_id: int, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
+@router.post("/decklist/decks/{deck_id}/archive")
+def archive_deck(deck_id: int, db: Session = Depends(get_db)):
+    deck = db.get(Deck, deck_id)
+    if not deck:
+        raise HTTPException(status_code=404)
+    deck.is_archived = True
+    db.commit()
+    return _deck_to_dict(deck)
+
+
+@router.post("/decklist/decks/{deck_id}/unarchive")
+def unarchive_deck(deck_id: int, db: Session = Depends(get_db)):
+    deck = db.get(Deck, deck_id)
+    if not deck:
+        raise HTTPException(status_code=404)
+    deck.is_archived = False
+    db.commit()
+    return _deck_to_dict(deck)
+
+
 # ---------------------------------------------------------------------------
 # バージョン CRUD
 # ---------------------------------------------------------------------------
 
 @router.get("/decklist/decks/{deck_id}/versions")
-def list_versions(deck_id: int, db: Session = Depends(get_db)):
+def list_versions(deck_id: int, include_archived: bool = Query(default=True), db: Session = Depends(get_db)):
     if not db.get(Deck, deck_id):
         raise HTTPException(status_code=404)
-    versions = (
-        db.query(DeckVersion)
-        .filter(DeckVersion.deck_id == deck_id)
-        .order_by(DeckVersion.version_number.desc())
-        .all()
-    )
+    q = db.query(DeckVersion).filter(DeckVersion.deck_id == deck_id)
+    if not include_archived:
+        q = q.filter(DeckVersion.is_archived == False)
+    versions = q.order_by(DeckVersion.version_number.desc()).all()
     return [_version_to_summary(v) for v in versions]
 
 
@@ -357,6 +383,30 @@ def delete_version(deck_id: int, version_id: int, db: Session = Depends(get_db))
     db.delete(v)
     db.commit()
     return {"ok": True}
+
+
+@router.post("/decklist/decks/{deck_id}/versions/{version_id}/archive")
+def archive_version(deck_id: int, version_id: int, db: Session = Depends(get_db)):
+    v = db.query(DeckVersion).filter(
+        DeckVersion.id == version_id, DeckVersion.deck_id == deck_id
+    ).first()
+    if not v:
+        raise HTTPException(status_code=404)
+    v.is_archived = True
+    db.commit()
+    return _version_to_summary(v)
+
+
+@router.post("/decklist/decks/{deck_id}/versions/{version_id}/unarchive")
+def unarchive_version(deck_id: int, version_id: int, db: Session = Depends(get_db)):
+    v = db.query(DeckVersion).filter(
+        DeckVersion.id == version_id, DeckVersion.deck_id == deck_id
+    ).first()
+    if not v:
+        raise HTTPException(status_code=404)
+    v.is_archived = False
+    db.commit()
+    return _version_to_summary(v)
 
 
 # ---------------------------------------------------------------------------

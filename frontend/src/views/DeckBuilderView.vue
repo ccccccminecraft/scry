@@ -24,6 +24,27 @@
           <div class="deck-item__meta">{{ deck.format ?? '未設定' }}</div>
         </div>
         <div v-if="filteredDecks.length === 0" class="pane__empty">デッキがありません</div>
+
+        <!-- アーカイブ済みセクション -->
+        <div class="archive-toggle" @click="toggleShowArchived">
+          <span class="archive-toggle__icon">{{ showArchived ? '▼' : '▶' }}</span>
+          アーカイブ済み
+        </div>
+        <template v-if="showArchived">
+          <div
+            v-for="deck in filteredArchivedDecks"
+            :key="deck.id"
+            class="deck-item deck-item--archived"
+          >
+            <div class="deck-item__name">{{ deck.name }}</div>
+            <div class="deck-item__meta">{{ deck.format ?? '未設定' }}</div>
+            <div class="deck-item__actions">
+              <button class="deck-item__action-btn" @click.stop="restoreDeck(deck)">復元</button>
+              <button class="deck-item__action-btn deck-item__action-btn--danger" @click.stop="confirmPermanentDeleteDeck(deck)">完全削除</button>
+            </div>
+          </div>
+          <div v-if="filteredArchivedDecks.length === 0" class="pane__empty">なし</div>
+        </template>
       </div>
     </div>
 
@@ -34,13 +55,14 @@
           <span class="pane__title">{{ selectedDeck.name }}</span>
           <div class="pane__header-actions">
             <button class="pane__btn" @click="openEditDeck">編集</button>
-            <button class="pane__btn pane__btn--danger" @click="confirmDeleteDeck">削除</button>
+            <button class="pane__btn pane__btn--danger" @click="archiveSelectedDeck">アーカイブ</button>
             <button class="pane__btn" @click="openNewVersion">+ 追加</button>
           </div>
         </div>
         <div class="pane__list">
+          <!-- アクティブなバージョン -->
           <div
-            v-for="v in versions"
+            v-for="v in versions.filter(v => !v.is_archived)"
             :key="v.id"
             class="version-item"
             :class="{ 'version-item--active': selectedVersion?.id === v.id }"
@@ -51,7 +73,24 @@
             <div class="version-item__count">{{ v.main_count }} / SB {{ v.side_count }}</div>
             <div class="version-item__date">{{ formatDate(v.registered_at) }}</div>
           </div>
-          <div v-if="versions.length === 0" class="pane__empty">バージョンがありません</div>
+          <div v-if="versions.filter(v => !v.is_archived).length === 0" class="pane__empty">バージョンがありません</div>
+
+          <!-- アーカイブ済みバージョン -->
+          <template v-if="versions.some(v => v.is_archived)">
+            <div class="archive-section-label">アーカイブ済み</div>
+            <div
+              v-for="v in versions.filter(v => v.is_archived)"
+              :key="v.id"
+              class="version-item version-item--archived"
+            >
+              <div class="version-item__label">v{{ v.version_number }}</div>
+              <div class="version-item__memo">{{ v.memo ?? '—' }}</div>
+              <div class="version-item__actions">
+                <button class="version-item__action-btn" @click.stop="restoreVersion(v)">復元</button>
+                <button class="version-item__action-btn version-item__action-btn--danger" @click.stop="confirmPermanentDeleteVersion(v)">完全削除</button>
+              </div>
+            </div>
+          </template>
         </div>
       </template>
       <div v-else class="pane__empty">デッキを選択してください</div>
@@ -64,7 +103,7 @@
           <span class="pane__title">v{{ selectedVersion.version_number }} {{ selectedVersion.memo ?? '' }}</span>
           <div class="pane__header-actions">
             <button class="pane__btn" @click="openBulkApply">一括適用</button>
-            <button class="pane__btn pane__btn--danger" @click="confirmDeleteVersion">削除</button>
+            <button class="pane__btn pane__btn--danger" @click="archiveSelectedVersion">アーカイブ</button>
             <div class="view-toggle">
               <button class="view-toggle__btn" :class="{ 'view-toggle__btn--active': viewMode === 'list' }" @click="viewMode = 'list'">リスト</button>
               <button class="view-toggle__btn" :class="{ 'view-toggle__btn--active': viewMode === 'card' }" @click="viewMode = 'card'">カード</button>
@@ -273,11 +312,15 @@ import {
   createDeck,
   updateDeck,
   deleteDeck,
+  archiveDeck,
+  unarchiveDeck,
   fetchVersions,
   fetchVersion,
   createVersionFromText,
   createVersionFromDek,
   deleteVersion,
+  archiveVersion,
+  unarchiveVersion,
   cardImageUrl,
   type Deck,
   type DeckVersionSummary,
@@ -292,10 +335,16 @@ const formats = ['standard', 'pioneer', 'modern', 'legacy', 'vintage', 'pauper',
 
 // State
 const decks = ref<Deck[]>([])
+const archivedDecks = ref<Deck[]>([])
+const showArchived = ref(false)
 const formatFilter = ref('')
 const filteredDecks = computed(() => {
   if (!formatFilter.value) return decks.value
   return decks.value.filter(d => d.format === formatFilter.value)
+})
+const filteredArchivedDecks = computed(() => {
+  if (!formatFilter.value) return archivedDecks.value
+  return archivedDecks.value.filter(d => d.format === formatFilter.value)
 })
 
 watch(formatFilter, () => {
@@ -360,9 +409,23 @@ onMounted(async () => {
 
 async function loadDecks() {
   try {
-    decks.value = await fetchDecks()
+    decks.value = await fetchDecks(false)
+    if (showArchived.value) {
+      archivedDecks.value = await fetchDecks(true)
+    }
   } catch {
     showError('デッキ一覧の取得に失敗しました')
+  }
+}
+
+async function toggleShowArchived() {
+  showArchived.value = !showArchived.value
+  if (showArchived.value && archivedDecks.value.length === 0) {
+    try {
+      archivedDecks.value = await fetchDecks(true)
+    } catch {
+      showError('アーカイブ済みデッキの取得に失敗しました')
+    }
   }
 }
 
@@ -420,16 +483,45 @@ async function saveDeck() {
   }
 }
 
-function confirmDeleteDeck() {
+async function archiveSelectedDeck() {
   if (!selectedDeck.value) return
-  confirmMessage.value = `「${selectedDeck.value.name}」とすべてのバージョンを削除しますか？`
-  pendingAction.value = async () => {
-    await deleteDeck(selectedDeck.value!.id)
+  try {
+    await archiveDeck(selectedDeck.value.id)
     decks.value = decks.value.filter(d => d.id !== selectedDeck.value!.id)
+    if (showArchived.value) {
+      archivedDecks.value = await fetchDecks(true)
+    }
     selectedDeck.value = null
     versions.value = []
     selectedVersion.value = null
-    showSuccess('デッキを削除しました')
+    showSuccess('デッキをアーカイブしました')
+  } catch {
+    showError('アーカイブに失敗しました')
+  }
+}
+
+async function restoreDeck(deck: Deck) {
+  try {
+    await unarchiveDeck(deck.id)
+    archivedDecks.value = archivedDecks.value.filter(d => d.id !== deck.id)
+    decks.value = await fetchDecks(false)
+    showSuccess('デッキを復元しました')
+  } catch {
+    showError('復元に失敗しました')
+  }
+}
+
+function confirmPermanentDeleteDeck(deck: Deck) {
+  confirmMessage.value = `「${deck.name}」を完全に削除しますか？この操作は取り消せません。`
+  pendingAction.value = async () => {
+    await deleteDeck(deck.id)
+    archivedDecks.value = archivedDecks.value.filter(d => d.id !== deck.id)
+    if (selectedDeck.value?.id === deck.id) {
+      selectedDeck.value = null
+      versions.value = []
+      selectedVersion.value = null
+    }
+    showSuccess('デッキを完全に削除しました')
   }
   confirmVisible.value = true
 }
@@ -474,15 +566,40 @@ async function saveVersion() {
   }
 }
 
-function confirmDeleteVersion() {
+async function archiveSelectedVersion() {
   if (!selectedVersion.value || !selectedDeck.value) return
-  confirmMessage.value = `v${selectedVersion.value.version_number} を削除しますか？`
-  pendingAction.value = async () => {
-    await deleteVersion(selectedDeck.value!.id, selectedVersion.value!.id)
-    versions.value = versions.value.filter(v => v.id !== selectedVersion.value!.id)
+  try {
+    const updated = await archiveVersion(selectedDeck.value.id, selectedVersion.value.id)
+    versions.value = versions.value.map(v => v.id === updated.id ? updated : v)
     selectedVersion.value = null
-    showSuccess('バージョンを削除しました')
     await loadDecks()
+    showSuccess('バージョンをアーカイブしました')
+  } catch {
+    showError('アーカイブに失敗しました')
+  }
+}
+
+async function restoreVersion(v: DeckVersionSummary) {
+  if (!selectedDeck.value) return
+  try {
+    const updated = await unarchiveVersion(selectedDeck.value.id, v.id)
+    versions.value = versions.value.map(ver => ver.id === updated.id ? updated : ver)
+    await loadDecks()
+    showSuccess('バージョンを復元しました')
+  } catch {
+    showError('復元に失敗しました')
+  }
+}
+
+function confirmPermanentDeleteVersion(v: DeckVersionSummary) {
+  if (!selectedDeck.value) return
+  confirmMessage.value = `v${v.version_number} を完全に削除しますか？この操作は取り消せません。`
+  pendingAction.value = async () => {
+    await deleteVersion(selectedDeck.value!.id, v.id)
+    versions.value = versions.value.filter(ver => ver.id !== v.id)
+    if (selectedVersion.value?.id === v.id) selectedVersion.value = null
+    await loadDecks()
+    showSuccess('バージョンを完全に削除しました')
   }
   confirmVisible.value = true
 }
@@ -679,6 +796,105 @@ async function applyBulk() {
   font-size: 11px;
   color: #7a6a55;
   margin-top: 2px;
+}
+
+/* アーカイブトグル */
+.archive-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: #a09080;
+  cursor: pointer;
+  border-top: 1px solid #f0ece0;
+  user-select: none;
+}
+
+.archive-toggle:hover {
+  color: #7a6a55;
+  background: #faf7f0;
+}
+
+.archive-toggle__icon {
+  font-size: 9px;
+}
+
+/* アーカイブ済みデッキ */
+.deck-item--archived {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.deck-item--archived:hover {
+  background: #faf7f0;
+}
+
+.deck-item__actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.deck-item__action-btn {
+  padding: 2px 6px;
+  border: 1px solid #c8b89a;
+  border-radius: 3px;
+  background: #fff;
+  font-size: 10px;
+  cursor: pointer;
+  color: #5a4a35;
+}
+
+.deck-item__action-btn:hover {
+  background: #f0ece0;
+}
+
+.deck-item__action-btn--danger {
+  color: #a03030;
+  border-color: #d8a0a0;
+}
+
+/* アーカイブ済みバージョン */
+.archive-section-label {
+  font-size: 10px;
+  color: #a09080;
+  padding: 6px 12px 2px;
+  border-top: 1px solid #f0ece0;
+}
+
+.version-item--archived {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.version-item--archived:hover {
+  background: transparent;
+}
+
+.version-item__actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.version-item__action-btn {
+  padding: 2px 6px;
+  border: 1px solid #c8b89a;
+  border-radius: 3px;
+  background: #fff;
+  font-size: 10px;
+  cursor: pointer;
+  color: #5a4a35;
+}
+
+.version-item__action-btn:hover {
+  background: #f0ece0;
+}
+
+.version-item__action-btn--danger {
+  color: #a03030;
+  border-color: #d8a0a0;
 }
 
 /* バージョンアイテム */
