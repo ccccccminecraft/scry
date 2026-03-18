@@ -62,6 +62,27 @@
         入力したキーはローカルの SQLite データベースに保存されます。
       </p>
     </div>
+    <div class="settings__section">
+      <div class="settings__section-title">データベース</div>
+      <div class="settings__row">
+        <button class="settings__btn settings__btn--primary" @click="handleDownloadBackup">バックアップをダウンロード</button>
+      </div>
+      <div class="settings__row">
+        <input type="file" accept=".db" ref="restoreFileInput" @change="onRestoreFileChange" class="settings__file-hidden" />
+        <button class="settings__btn" @click="restoreFileInput?.click()">ファイルを選択</button>
+        <span class="settings__file-name">{{ restoreFile ? restoreFile.name : '未選択' }}</span>
+        <button class="settings__btn settings__btn--danger" :disabled="!restoreFile" @click="handleRestore">リストア</button>
+      </div>
+      <p class="settings__note">リストアを実行すると現在のデータが置き換えられます。リストア前に自動バックアップが作成されます。</p>
+    </div>
+
+    <ConfirmDialog
+      :visible="confirmVisible"
+      message="データベースをリストアしますか？現在のデータはすべて置き換えられます。"
+      @confirm="onConfirmRestore"
+      @cancel="confirmVisible = false"
+    />
+
     <div v-if="appVersion" class="settings__version">v{{ appVersion }}</div>
   </div>
 </template>
@@ -72,10 +93,15 @@ import axios from 'axios'
 import { useToast } from '../composables/useToast'
 import { fetchSettings, updateSettings, deleteApiKey } from '../api/settings'
 import { fetchPlayers } from '../api/stats'
+import { downloadBackup, restoreBackup } from '../api/backup'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 
 const { showSuccess, showError } = useToast()
 
 const configured = ref(false)
+const restoreFileInput = ref<HTMLInputElement | null>(null)
+const restoreFile = ref<File | null>(null)
+const confirmVisible = ref(false)
 const apiKeyInput = ref('')
 const playerList = ref<string[]>([])
 const defaultPlayerInput = ref('')
@@ -136,6 +162,36 @@ async function saveApiKey() {
 
 function reload() {
   window.location.reload()
+}
+
+async function handleDownloadBackup() {
+  try {
+    await downloadBackup()
+  } catch {
+    showError('バックアップのダウンロードに失敗しました')
+  }
+}
+
+function onRestoreFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  restoreFile.value = input.files?.[0] ?? null
+}
+
+function handleRestore() {
+  if (!restoreFile.value) return
+  confirmVisible.value = true
+}
+
+async function onConfirmRestore() {
+  confirmVisible.value = false
+  if (!restoreFile.value) return
+  try {
+    await restoreBackup(restoreFile.value)
+    showSuccess('リストアが完了しました。再読み込みします...')
+    setTimeout(() => window.location.reload(), 1000)
+  } catch {
+    showError('リストアに失敗しました')
+  }
 }
 
 async function removeApiKey() {
@@ -279,5 +335,18 @@ async function removeApiKey() {
   font-size: 11px;
   color: #a09080;
   text-align: right;
+}
+
+.settings__file-hidden {
+  display: none;
+}
+
+.settings__file-name {
+  font-size: 13px;
+  color: #7a6a55;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>
