@@ -6,9 +6,15 @@
         <span class="pane__title">デッキ一覧</span>
         <button class="pane__btn" @click="openNewDeck">+ 新規</button>
       </div>
+      <div class="pane__filter">
+        <select v-model="formatFilter" class="pane__filter-select">
+          <option value="">すべて</option>
+          <option v-for="f in formats" :key="f" :value="f">{{ f }}</option>
+        </select>
+      </div>
       <div class="pane__list">
         <div
-          v-for="deck in decks"
+          v-for="deck in filteredDecks"
           :key="deck.id"
           class="deck-item"
           :class="{ 'deck-item--active': selectedDeck?.id === deck.id }"
@@ -17,7 +23,7 @@
           <div class="deck-item__name">{{ deck.name }}</div>
           <div class="deck-item__meta">{{ deck.format ?? '未設定' }}</div>
         </div>
-        <div v-if="decks.length === 0" class="pane__empty">デッキがありません</div>
+        <div v-if="filteredDecks.length === 0" class="pane__empty">デッキがありません</div>
       </div>
     </div>
 
@@ -57,7 +63,6 @@
         <div class="pane__header">
           <span class="pane__title">v{{ selectedVersion.version_number }} {{ selectedVersion.memo ?? '' }}</span>
           <div class="pane__header-actions">
-            <button class="pane__btn" @click="openEditVersion">編集</button>
             <button class="pane__btn pane__btn--danger" @click="confirmDeleteVersion">削除</button>
           </div>
         </div>
@@ -121,22 +126,18 @@
     <!-- バージョン作成・編集モーダル -->
     <div v-if="versionModalVisible" class="modal-overlay" @click.self="versionModalVisible = false">
       <div class="modal modal--wide">
-        <div class="modal__title">
-          {{ editingVersion ? `v${editingVersion.version_number} を編集` : '新バージョンを作成' }}
-        </div>
+        <div class="modal__title">新バージョンを作成</div>
         <div class="modal__field">
           <label class="modal__label">メモ（任意）</label>
           <input v-model="versionMemo" type="text" class="modal__input" placeholder="MH3後調整" />
         </div>
-        <template v-if="!editingVersion">
-          <div class="modal__field">
-            <label class="modal__label">入力方法</label>
-            <div class="modal__radio-group">
-              <label><input type="radio" v-model="versionSource" value="text" /> テキスト貼り付け</label>
-              <label><input type="radio" v-model="versionSource" value="dek" /> .dek ファイル</label>
-            </div>
+        <div class="modal__field">
+          <label class="modal__label">入力方法</label>
+          <div class="modal__radio-group">
+            <label><input type="radio" v-model="versionSource" value="text" /> テキスト貼り付け</label>
+            <label><input type="radio" v-model="versionSource" value="dek" /> .dek ファイル</label>
           </div>
-        </template>
+        </div>
         <div class="modal__field modal__field--grow">
           <label class="modal__label">カードリスト</label>
           <textarea
@@ -170,7 +171,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useToast } from '../composables/useToast'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import {
@@ -182,7 +183,6 @@ import {
   fetchVersion,
   createVersionFromText,
   createVersionFromDek,
-  updateVersion,
   deleteVersion,
   cardImageUrl,
   type Deck,
@@ -196,6 +196,19 @@ const formats = ['standard', 'pioneer', 'modern', 'legacy', 'vintage', 'pauper',
 
 // State
 const decks = ref<Deck[]>([])
+const formatFilter = ref('')
+const filteredDecks = computed(() => {
+  if (!formatFilter.value) return decks.value
+  return decks.value.filter(d => d.format === formatFilter.value)
+})
+
+watch(formatFilter, () => {
+  if (selectedDeck.value && !filteredDecks.value.find(d => d.id === selectedDeck.value!.id)) {
+    selectedDeck.value = null
+    versions.value = []
+    selectedVersion.value = null
+  }
+})
 const selectedDeck = ref<Deck | null>(null)
 const versions = ref<DeckVersionSummary[]>([])
 const selectedVersion = ref<DeckVersionDetail | null>(null)
@@ -208,7 +221,6 @@ const deckFormatInput = ref('')
 
 // Version modal
 const versionModalVisible = ref(false)
-const editingVersion = ref<DeckVersionDetail | null>(null)
 const versionMemo = ref('')
 const versionSource = ref<'text' | 'dek'>('text')
 const versionText = ref('')
@@ -307,34 +319,10 @@ function confirmDeleteDeck() {
 }
 
 function openNewVersion() {
-  editingVersion.value = null
   versionMemo.value = ''
   versionSource.value = 'text'
   versionText.value = ''
   dekFile.value = null
-  versionError.value = ''
-  versionModalVisible.value = true
-}
-
-function openEditVersion() {
-  if (!selectedVersion.value) return
-  editingVersion.value = selectedVersion.value
-
-  // バージョンのカードリストをテキスト形式に変換
-  const lines: string[] = []
-  for (const c of selectedVersion.value.main) {
-    lines.push(`${c.quantity} ${c.card_name}`)
-  }
-  if (selectedVersion.value.sideboard.length > 0) {
-    lines.push('')
-    lines.push('Sideboard')
-    for (const c of selectedVersion.value.sideboard) {
-      lines.push(`${c.quantity} ${c.card_name}`)
-    }
-  }
-  versionMemo.value = selectedVersion.value.memo ?? ''
-  versionSource.value = 'text'
-  versionText.value = lines.join('\n')
   versionError.value = ''
   versionModalVisible.value = true
 }
@@ -349,21 +337,12 @@ async function saveVersion() {
   versionError.value = ''
   try {
     let result: DeckVersionDetail
-    if (editingVersion.value) {
-      result = await updateVersion(
-        selectedDeck.value.id,
-        editingVersion.value.id,
-        versionMemo.value,
-        versionText.value,
-      )
-      showSuccess('バージョンを更新しました')
-    } else if (versionSource.value === 'text') {
+    if (versionSource.value === 'text') {
       result = await createVersionFromText(selectedDeck.value.id, versionMemo.value, versionText.value)
-      showSuccess('バージョンを作成しました')
     } else {
       result = await createVersionFromDek(selectedDeck.value.id, versionMemo.value, dekFile.value!)
-      showSuccess('バージョンを作成しました')
     }
+    showSuccess('バージョンを作成しました')
     versionModalVisible.value = false
     versions.value = await fetchVersions(selectedDeck.value.id)
     selectedVersion.value = result
@@ -469,6 +448,24 @@ function formatDate(iso: string): string {
 .pane__btn--danger {
   color: #a03030;
   border-color: #d8a0a0;
+}
+
+.pane__filter {
+  padding: 6px 10px;
+  border-bottom: 1px solid #e0d8c8;
+  background: #faf7f0;
+  flex-shrink: 0;
+}
+
+.pane__filter-select {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid #c8b89a;
+  border-radius: 4px;
+  font-size: 12px;
+  background: #fff;
+  color: #2c2416;
+  font-family: inherit;
 }
 
 .pane__list {
