@@ -1,7 +1,12 @@
+from __future__ import annotations
 from datetime import datetime
+from typing import TYPE_CHECKING, Optional
 from sqlalchemy import Integer, Text, DateTime, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
+
+if TYPE_CHECKING:
+    from models.decklist import DeckVersion
 
 
 class Match(Base):
@@ -35,8 +40,12 @@ class MatchPlayer(Base):
     seat: Mapped[int] = mapped_column(Integer, nullable=False)
     deck_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     game_plan: Mapped[str | None] = mapped_column(Text, nullable=True)
+    deck_version_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("deck_versions.id", ondelete="SET NULL"), nullable=True
+    )
 
     match: Mapped["Match"] = relationship(back_populates="players")
+    deck_version: Mapped[Optional["DeckVersion"]] = relationship()
 
 
 class Game(Base):

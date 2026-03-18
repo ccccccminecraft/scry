@@ -33,6 +33,7 @@ export interface CardStat {
 export interface StatsFilters {
   player: string
   opponent?: string
+  deck_id?: number
   deck?: string
   opponent_deck?: string
   format?: string

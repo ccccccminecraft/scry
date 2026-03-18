@@ -29,10 +29,18 @@
       </div>
       <div class="filter-group">
         <label class="filter-label">デッキ</label>
-        <select v-model="deck" class="filter-select">
-          <option value="">すべて</option>
-          <option v-for="d in deckList" :key="d" :value="d">{{ d }}</option>
+        <select v-if="useDeckManager" v-model="deckId" class="filter-select">
+          <option :value="null">すべて</option>
+          <option v-for="d in deckList" :key="d.id" :value="d.id">{{ d.name }}</option>
         </select>
+        <select v-else v-model="deck" class="filter-select">
+          <option value="">すべて</option>
+          <option v-for="d in deckNameList" :key="d" :value="d">{{ d }}</option>
+        </select>
+        <label class="filter-check-label">
+          <input type="checkbox" v-model="useDeckManager" />
+          デッキ管理
+        </label>
       </div>
       <div class="filter-group">
         <label class="filter-label">相手デッキ</label>
@@ -111,9 +119,9 @@ import { useFilterState } from '../composables/useFilterState'
 const { showError } = useToast()
 const {
   playerModel, opponentModel, formatModel,
-  deck, opponentDeck, dateFrom, dateTo,
+  useDeckManager, deckId, deck, opponentDeck, dateFrom, dateTo,
   player, opponent, format,
-  playerList, opponentList, deckList, opponentDeckList, formatList,
+  playerList, opponentList, deckList, deckNameList, opponentDeckList, formatList,
   init,
 } = useFilterState()
 
@@ -130,7 +138,8 @@ async function load() {
     const res = await fetchMatches(10, (page.value - 1) * 10, {
       player: player.value || undefined,
       opponent: opponent.value || undefined,
-      deck: deck.value || undefined,
+      deck_id: useDeckManager.value ? (deckId.value ?? undefined) : undefined,
+      deck: useDeckManager.value ? undefined : (deck.value || undefined),
       opponent_deck: opponentDeck.value || undefined,
       format: format.value || undefined,
       date_from: dateFrom.value || undefined,
@@ -146,7 +155,7 @@ async function load() {
 }
 
 watch(
-  [player, opponent, deck, opponentDeck, format, dateFrom, dateTo],
+  [player, opponent, useDeckManager, deckId, deck, opponentDeck, format, dateFrom, dateTo],
   () => { page.value = 1; load() },
 )
 
@@ -231,6 +240,16 @@ onActivated(activate)
   color: #2c2416;
   font-size: 11px;
   font-family: inherit;
+}
+
+.filter-check-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #7a6a55;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .match-list__loading,

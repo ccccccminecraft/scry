@@ -21,6 +21,8 @@ export interface PlayerInfo {
   player_name: string
   deck_name: string | null
   game_plan: string | null
+  deck_version_id: number | null
+  deck_version_label: string | null
 }
 
 export interface GameSummary {
@@ -59,6 +61,7 @@ export interface ActionLogResponse {
 export interface MatchFilters {
   player?: string
   opponent?: string
+  deck_id?: number
   deck?: string
   opponent_deck?: string
   format?: string
@@ -109,6 +112,26 @@ export async function fetchExportMarkdown(params: ExportParams): Promise<string>
 export async function fetchLatestMatchDate(): Promise<string | null> {
   const res = await client.get<{ latest_date: string | null }>('/api/matches/latest-date')
   return res.data.latest_date
+}
+
+export async function putDeckVersion(
+  matchId: string,
+  playerName: string,
+  deckVersionId: number,
+): Promise<void> {
+  await client.put(
+    `/api/matches/${matchId}/players/${encodeURIComponent(playerName)}/deck-version`,
+    { deck_version_id: deckVersionId },
+  )
+}
+
+export async function deleteDeckVersion(
+  matchId: string,
+  playerName: string,
+): Promise<void> {
+  await client.delete(
+    `/api/matches/${matchId}/players/${encodeURIComponent(playerName)}/deck-version`,
+  )
 }
 
 export async function patchPlayer(

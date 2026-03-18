@@ -28,10 +28,18 @@
         </div>
         <div class="ai-export__group">
           <label class="ai-export__label">使用デッキ</label>
-          <select v-model="deck" class="ai-export__select">
-            <option value="">すべて</option>
-            <option v-for="d in deckList" :key="d" :value="d">{{ d }}</option>
+          <select v-if="useDeckManager" v-model="deckId" class="ai-export__select">
+            <option :value="null">すべて</option>
+            <option v-for="d in deckList" :key="d.id" :value="d.id">{{ d.name }}</option>
           </select>
+          <select v-else v-model="deck" class="ai-export__select">
+            <option value="">すべて</option>
+            <option v-for="d in deckNameList" :key="d" :value="d">{{ d }}</option>
+          </select>
+          <label class="ai-export__check-label">
+            <input type="checkbox" v-model="useDeckManager" />
+            デッキ管理
+          </label>
         </div>
         <div class="ai-export__group">
           <label class="ai-export__label">相手デッキ</label>
@@ -120,9 +128,9 @@ import ConfirmDialog from '../components/ConfirmDialog.vue'
 const { showError } = useToast()
 const {
   playerModel, opponentModel, formatModel,
-  deck, opponentDeck, dateFrom, dateTo,
+  useDeckManager, deckId, deck, opponentDeck, dateFrom, dateTo,
   player, opponent, format,
-  playerList, opponentList, deckList, opponentDeckList, formatList,
+  playerList, opponentList, deckList, deckNameList, opponentDeckList, formatList,
   init,
 } = useFilterState()
 
@@ -141,13 +149,14 @@ async function loadCount() {
   } catch { /* ignore */ }
 }
 
-watch([player, opponent, deck, opponentDeck, format, dateFrom, dateTo], loadCount)
+watch([player, opponent, useDeckManager, deckId, deck, opponentDeck, format, dateFrom, dateTo], loadCount)
 
 function currentFilters() {
   return {
     player: player.value,
     opponent: opponent.value || undefined,
-    deck: deck.value || undefined,
+    deck_id: useDeckManager.value ? (deckId.value ?? undefined) : undefined,
+    deck: useDeckManager.value ? undefined : (deck.value || undefined),
     opponent_deck: opponentDeck.value || undefined,
     format: format.value || undefined,
     date_from: dateFrom.value || undefined,
@@ -296,6 +305,16 @@ onMounted(async () => {
   background: #fff;
   color: #2c2416;
   font-family: inherit;
+}
+
+.ai-export__check-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #7a6a55;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .ai-export__radios {

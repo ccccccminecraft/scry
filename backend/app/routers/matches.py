@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models.core import Match, MatchPlayer, Game, Mulligan, Action
+from models.decklist import DeckVersion, Deck
 
 router = APIRouter()
 
@@ -38,6 +39,7 @@ def list_matches(
     offset: int = Query(default=0, ge=0),
     player: str | None = Query(default=None),
     opponent: str | None = Query(default=None),
+    deck_id: int | None = Query(default=None),
     deck: str | None = Query(default=None),
     opponent_deck: str | None = Query(default=None),
     format: str | None = Query(default=None),
@@ -63,7 +65,18 @@ def list_matches(
         )
         q = q.filter(Match.id.in_(opp_sub))
 
-    if deck:
+    if deck_id:
+        deck_sub = (
+            db.query(MatchPlayer.match_id)
+            .join(DeckVersion, DeckVersion.id == MatchPlayer.deck_version_id)
+            .filter(
+                MatchPlayer.player_name == player,
+                DeckVersion.deck_id == deck_id,
+            )
+            .subquery()
+        )
+        q = q.filter(Match.id.in_(deck_sub))
+    elif deck:
         deck_sub = (
             db.query(MatchPlayer.match_id)
             .filter(
@@ -133,6 +146,7 @@ def _export_filter_params():
 def export_count(
     player: str = Query(...),
     opponent: str | None = Query(default=None),
+    deck_id: int | None = Query(default=None),
     deck: str | None = Query(default=None),
     opponent_deck: str | None = Query(default=None),
     format: str | None = Query(default=None),
@@ -142,7 +156,7 @@ def export_count(
 ):
     """エクスポート対象マッチ数を返す。"""
     from app.routers.stats import _build_match_id_list
-    match_ids = _build_match_id_list(db, player, opponent, deck, opponent_deck, format, date_from, date_to)
+    match_ids = _build_match_id_list(db, player, opponent, deck_id, opponent_deck, format, date_from, date_to, deck)
     return {"count": len(match_ids)}
 
 
@@ -150,6 +164,7 @@ def export_count(
 def export_matches(
     player: str = Query(...),
     opponent: str | None = Query(default=None),
+    deck_id: int | None = Query(default=None),
     deck: str | None = Query(default=None),
     opponent_deck: str | None = Query(default=None),
     format: str | None = Query(default=None),
@@ -163,10 +178,11 @@ def export_matches(
     """対戦データを Markdown 形式でエクスポートする。"""
     from app.routers.stats import _build_match_id_list, _calc_deck_stats
 
-    match_ids = _build_match_id_list(db, player, opponent, deck, opponent_deck, format, date_from, date_to)
+    match_ids = _build_match_id_list(db, player, opponent, deck_id, opponent_deck, format, date_from, date_to, deck)
+    deck_name = (db.get(Deck, deck_id).name if deck_id and db.get(Deck, deck_id) else None) or deck
     effective_limit = None if no_limit else limit
     markdown = _build_export_markdown(player, db, match_ids, detail_level, effective_limit,
-                                      opponent, deck, opponent_deck, format, date_from, date_to)
+                                      opponent, deck_name, opponent_deck, format, date_from, date_to)
 
     from datetime import datetime as dt
     date_str = dt.now().strftime("%Y%m%d%H%M%S")
@@ -421,6 +437,11 @@ def get_match(match_id: str, db: Session = Depends(get_db)):
                 "player_name": p.player_name,
                 "deck_name": p.deck_name,
                 "game_plan": p.game_plan,
+                "deck_version_id": p.deck_version_id,
+                "deck_version_label": (
+                    f"{p.deck_version.deck.name} v{p.deck_version.version_number}"
+                    if p.deck_version is not None else None
+                ),
             }
             for p in sorted_players
         ],
@@ -459,6 +480,51 @@ def get_actions(match_id: str, game_id: int, db: Session = Depends(get_db)):
             for a in actions
         ],
     }
+
+
+class DeckVersionBody(BaseModel):
+    deck_version_id: int
+
+
+@router.put("/matches/{match_id}/players/{player_name}/deck-version")
+def put_deck_version(
+    match_id: str,
+    player_name: str,
+    body: DeckVersionBody,
+    db: Session = Depends(get_db),
+):
+    """使用デッキバージョンを設定する。"""
+    mp = (
+        db.query(MatchPlayer)
+        .filter(MatchPlayer.match_id == match_id, MatchPlayer.player_name == player_name)
+        .first()
+    )
+    if mp is None:
+        raise HTTPException(status_code=404, detail="Player not found")
+    if db.get(DeckVersion, body.deck_version_id) is None:
+        raise HTTPException(status_code=404, detail="DeckVersion not found")
+    mp.deck_version_id = body.deck_version_id
+    db.commit()
+    return {"status": "updated"}
+
+
+@router.delete("/matches/{match_id}/players/{player_name}/deck-version")
+def delete_deck_version(
+    match_id: str,
+    player_name: str,
+    db: Session = Depends(get_db),
+):
+    """使用デッキバージョンの紐づけを解除する。"""
+    mp = (
+        db.query(MatchPlayer)
+        .filter(MatchPlayer.match_id == match_id, MatchPlayer.player_name == player_name)
+        .first()
+    )
+    if mp is None:
+        raise HTTPException(status_code=404, detail="Player not found")
+    mp.deck_version_id = None
+    db.commit()
+    return {"status": "updated"}
 
 
 class PatchPlayerBody(BaseModel):

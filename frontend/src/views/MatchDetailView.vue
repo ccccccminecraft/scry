@@ -53,8 +53,47 @@
             <option value="control">control</option>
             <option value="combo">combo</option>
           </select>
+
+          <!-- デッキバージョン -->
+          <span class="player-row__label">使用デッキ:</span>
+          <span class="player-row__deck-ver">{{ p.deck_version_label ?? '未設定' }}</span>
+          <button class="btn-edit" @click="openDeckVersionModal(p)">✎</button>
+          <button v-if="p.deck_version_id" class="btn-unlink" @click="unlinkDeckVersion(p)">✕</button>
         </div>
       </div>
+
+    <!-- デッキバージョン選択モーダル -->
+    <div v-if="dvModal.visible" class="modal-overlay" @click.self="dvModal.visible = false">
+      <div class="modal">
+        <div class="modal__title">使用デッキを設定</div>
+        <div class="modal__field">
+          <label class="modal__label">デッキ</label>
+          <select v-model="dvModal.deckId" class="modal__select" @change="onDvDeckChange">
+            <option :value="null">選択してください</option>
+            <option v-for="d in dvModal.decks" :key="d.id" :value="d.id">
+              {{ d.name }}{{ d.format ? ` (${d.format})` : '' }}
+            </option>
+          </select>
+        </div>
+        <div class="modal__field">
+          <label class="modal__label">バージョン</label>
+          <select v-model="dvModal.versionId" class="modal__select" :disabled="!dvModal.deckId">
+            <option :value="null">選択してください</option>
+            <option v-for="v in dvModal.versions" :key="v.id" :value="v.id">
+              v{{ v.version_number }}{{ v.memo ? ` — ${v.memo}` : '' }} ({{ v.main_count }}枚)
+            </option>
+          </select>
+        </div>
+        <div class="modal__footer">
+          <button class="modal__btn" @click="dvModal.visible = false">キャンセル</button>
+          <button
+            class="modal__btn modal__btn--primary"
+            :disabled="!dvModal.versionId"
+            @click="saveDeckVersion"
+          >設定</button>
+        </div>
+      </div>
+    </div>
 
       <!-- ゲーム一覧 -->
       <div class="detail__games">
@@ -73,7 +112,8 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import GameAccordion from '../components/GameAccordion.vue'
-import { fetchMatchDetail, patchPlayer, type MatchDetail, type PlayerInfo } from '../api/matches'
+import { fetchMatchDetail, patchPlayer, putDeckVersion, deleteDeckVersion, type MatchDetail, type PlayerInfo } from '../api/matches'
+import { fetchDecks, fetchVersions, type Deck, type DeckVersionSummary } from '../api/decklist'
 import { useToast } from '../composables/useToast'
 
 const route = useRoute()
@@ -84,6 +124,23 @@ const loading = ref(false)
 const deckEditing = reactive<Record<string, boolean>>({})
 const deckDraft = reactive<Record<string, string>>({})
 const gamePlanSaving = reactive<Record<string, boolean>>({})
+
+// デッキバージョン選択モーダル
+const dvModal = reactive<{
+  visible: boolean
+  targetPlayer: PlayerInfo | null
+  decks: Deck[]
+  deckId: number | null
+  versions: DeckVersionSummary[]
+  versionId: number | null
+}>({
+  visible: false,
+  targetPlayer: null,
+  decks: [],
+  deckId: null,
+  versions: [],
+  versionId: null,
+})
 
 onMounted(async () => {
   loading.value = true
@@ -143,6 +200,55 @@ async function onGamePlanChange(p: PlayerInfo, value: string) {
     showError(e instanceof Error ? e.message : 'ゲームプランの更新に失敗しました')
   } finally {
     gamePlanSaving[p.player_name] = false
+  }
+}
+
+async function openDeckVersionModal(p: PlayerInfo) {
+  dvModal.targetPlayer = p
+  dvModal.deckId = null
+  dvModal.versions = []
+  dvModal.versionId = null
+  try {
+    dvModal.decks = await fetchDecks()
+  } catch {
+    showError('デッキ一覧の取得に失敗しました')
+    return
+  }
+  dvModal.visible = true
+}
+
+async function onDvDeckChange() {
+  dvModal.versions = []
+  dvModal.versionId = null
+  if (!dvModal.deckId) return
+  try {
+    dvModal.versions = await fetchVersions(dvModal.deckId)
+  } catch {
+    showError('バージョン一覧の取得に失敗しました')
+  }
+}
+
+async function saveDeckVersion() {
+  if (!dvModal.targetPlayer || !dvModal.versionId) return
+  try {
+    await putDeckVersion(detail.value!.match_id, dvModal.targetPlayer.player_name, dvModal.versionId)
+    const v = dvModal.versions.find(v => v.id === dvModal.versionId)
+    const d = dvModal.decks.find(d => d.id === dvModal.deckId)
+    dvModal.targetPlayer.deck_version_id = dvModal.versionId
+    dvModal.targetPlayer.deck_version_label = d && v ? `${d.name} v${v.version_number}` : null
+    dvModal.visible = false
+  } catch {
+    showError('デッキバージョンの設定に失敗しました')
+  }
+}
+
+async function unlinkDeckVersion(p: PlayerInfo) {
+  try {
+    await deleteDeckVersion(detail.value!.match_id, p.player_name)
+    p.deck_version_id = null
+    p.deck_version_label = null
+  } catch {
+    showError('デッキバージョンの解除に失敗しました')
   }
 }
 </script>
@@ -236,5 +342,97 @@ async function onGamePlanChange(p: PlayerInfo, value: string) {
 }
 .player-row__select:disabled { opacity: 0.5; }
 
+.player-row__deck-ver {
+  color: #2c2416;
+  font-size: 13px;
+  min-width: 80px;
+}
+
+.btn-unlink {
+  background: none;
+  border: none;
+  color: #a03030;
+  padding: 0 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.btn-unlink:hover { color: #cc0000; }
+
 .detail__games { margin-top: 8px; }
+
+/* モーダル */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 8px;
+  padding: 24px;
+  width: 400px;
+  max-width: 90vw;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modal__title {
+  font-size: 14px;
+  font-weight: bold;
+  color: #2c2416;
+}
+
+.modal__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modal__label {
+  font-size: 12px;
+  color: #7a6a55;
+}
+
+.modal__select {
+  padding: 6px 10px;
+  border: 1px solid #c8b89a;
+  border-radius: 4px;
+  font-size: 13px;
+  background: #fff;
+  color: #2c2416;
+  font-family: inherit;
+}
+.modal__select:disabled { opacity: 0.5; }
+
+.modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.modal__btn {
+  padding: 6px 16px;
+  border: 1px solid #c8b89a;
+  border-radius: 4px;
+  background: #faf7f0;
+  font-size: 13px;
+  cursor: pointer;
+  color: #2c2416;
+  font-family: inherit;
+}
+.modal__btn:hover { background: #f0ece0; }
+
+.modal__btn--primary {
+  background: #4a6fa5;
+  border-color: #4a6fa5;
+  color: #fff;
+}
+.modal__btn--primary:hover:not(:disabled) { background: #3a5f95; }
+.modal__btn--primary:disabled { opacity: 0.4; cursor: default; }
 </style>

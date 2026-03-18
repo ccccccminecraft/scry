@@ -26,10 +26,18 @@
       </div>
       <div class="stats__filter-group">
         <label class="stats__label">デッキ</label>
-        <select v-model="deck" class="stats__select">
-          <option value="">すべて</option>
-          <option v-for="d in deckList" :key="d" :value="d">{{ d }}</option>
+        <select v-if="useDeckManager" v-model="deckId" class="stats__select">
+          <option :value="null">すべて</option>
+          <option v-for="d in deckList" :key="d.id" :value="d.id">{{ d.name }}</option>
         </select>
+        <select v-else v-model="deck" class="stats__select">
+          <option value="">すべて</option>
+          <option v-for="d in deckNameList" :key="d" :value="d">{{ d }}</option>
+        </select>
+        <label class="stats__check-label">
+          <input type="checkbox" v-model="useDeckManager" />
+          デッキ管理
+        </label>
       </div>
       <div class="stats__filter-group">
         <label class="stats__label">相手デッキ</label>
@@ -176,9 +184,9 @@ import DeckStatsChart from '../components/charts/DeckStatsChart.vue'
 const { showError } = useToast()
 const {
   playerModel, opponentModel, formatModel,
-  deck, opponentDeck, dateFrom, dateTo,
+  useDeckManager, deckId, deck, opponentDeck, dateFrom, dateTo,
   player, opponent, format,
-  playerList, opponentList, deckList, opponentDeckList, formatList,
+  playerList, opponentList, deckList, deckNameList, opponentDeckList, formatList,
   minDeckMatches,
   init,
 } = useFilterState()
@@ -231,7 +239,8 @@ async function loadStats() {
     stats.value = await fetchStats({
       player: player.value,
       opponent: opponent.value || undefined,
-      deck: deck.value || undefined,
+      deck_id: useDeckManager.value ? (deckId.value ?? undefined) : undefined,
+      deck: useDeckManager.value ? undefined : (deck.value || undefined),
       opponent_deck: opponentDeck.value || undefined,
       format: format.value || undefined,
       date_from: dateFrom.value || undefined,
@@ -244,12 +253,18 @@ async function loadStats() {
   }
 }
 
+function _deckFilters() {
+  return useDeckManager.value
+    ? { deck_id: deckId.value ?? undefined }
+    : { deck: deck.value || undefined }
+}
+
 async function loadCardStats() {
   if (!player.value) return
   const filters = {
     player: player.value,
     opponent: opponent.value || undefined,
-    deck: deck.value || undefined,
+    ..._deckFilters(),
     opponent_deck: opponentDeck.value || undefined,
     format: format.value || undefined,
     date_from: dateFrom.value || undefined,
@@ -267,7 +282,7 @@ async function loadOpponentCardStats() {
   const filters = {
     player: player.value,
     opponent: opponent.value || undefined,
-    deck: deck.value || undefined,
+    ..._deckFilters(),
     opponent_deck: opponentDeck.value || undefined,
     format: format.value || undefined,
     date_from: dateFrom.value || undefined,
@@ -281,7 +296,7 @@ async function loadOpponentCardStats() {
 }
 
 watch(
-  [player, opponent, deck, opponentDeck, format, dateFrom, dateTo],
+  [player, opponent, useDeckManager, deckId, deck, opponentDeck, format, dateFrom, dateTo],
   loadAll,
 )
 
@@ -340,6 +355,16 @@ onActivated(activate)
   background: #fff;
   color: #2c2416;
   font-size: 11px;
+}
+
+.stats__check-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #7a6a55;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .stats__input-date {

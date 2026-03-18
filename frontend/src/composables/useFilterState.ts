@@ -1,13 +1,16 @@
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import {
   fetchPlayers, fetchOpponents, fetchPlayerDecks, fetchOpponentDecks, fetchFormats,
 } from '../api/stats'
+import { fetchDecks, type Deck } from '../api/decklist'
 import { fetchSettings } from '../api/settings'
 
 // ── module-level shared state (全ビューで共有) ────────────────────────────────
 const player = ref('')
 const opponent = ref('')
-const deck = ref('')
+const useDeckManager = ref(false)
+const deckId = ref<number | null>(null)   // デッキ管理モード用
+const deck = ref('')                       // デッキ定義モード用
 const opponentDeck = ref('')
 const format = ref('')
 const dateFrom = ref('')
@@ -15,9 +18,16 @@ const dateTo = ref('')
 
 const playerList = ref<string[]>([])
 const opponentList = ref<string[]>([])
-const deckList = ref<string[]>([])
+const deckList = ref<Deck[]>([])           // デッキ管理リスト
+const deckNameList = ref<string[]>([])     // デッキ定義リスト
 const opponentDeckList = ref<string[]>([])
 const formatList = ref<string[]>([])
+
+// モード切替時にデッキ選択をリセット
+watch(useDeckManager, () => {
+  deckId.value = null
+  deck.value = ''
+})
 
 // settings から取得した最低試合数
 const minPlayerMatches = ref(1)
@@ -29,17 +39,20 @@ async function _loadAllLists() {
   if (!player.value) {
     opponentList.value = []
     deckList.value = []
+    deckNameList.value = []
     opponentDeckList.value = []
     return
   }
   try {
-    const [opps, decks, oppDecks] = await Promise.all([
+    const [opps, decks, deckNames, oppDecks] = await Promise.all([
       fetchOpponents(player.value),
+      fetchDecks(),
       fetchPlayerDecks(player.value, format.value || undefined, minDeckMatches.value),
       fetchOpponentDecks(player.value, opponent.value || undefined, format.value || undefined, minDeckMatches.value),
     ])
     opponentList.value = opps
     deckList.value = decks
+    deckNameList.value = deckNames
     opponentDeckList.value = oppDecks
   } catch { /* ignore */ }
 }
@@ -54,13 +67,15 @@ async function _loadOpponentDeckList() {
 }
 
 async function _loadDeckAndOpponentDeckList() {
-  if (!player.value) { deckList.value = []; opponentDeckList.value = []; return }
+  if (!player.value) { deckList.value = []; deckNameList.value = []; opponentDeckList.value = []; return }
   try {
-    const [decks, oppDecks] = await Promise.all([
+    const [decks, deckNames, oppDecks] = await Promise.all([
+      fetchDecks(),
       fetchPlayerDecks(player.value, format.value || undefined, minDeckMatches.value),
       fetchOpponentDecks(player.value, opponent.value || undefined, format.value || undefined, minDeckMatches.value),
     ])
     deckList.value = decks
+    deckNameList.value = deckNames
     opponentDeckList.value = oppDecks
   } catch { /* ignore */ }
 }
@@ -74,6 +89,7 @@ export function useFilterState() {
     set: (p: string) => {
       player.value = p
       opponent.value = ''
+      deckId.value = null
       deck.value = ''
       opponentDeck.value = ''
       _loadAllLists()
@@ -93,6 +109,7 @@ export function useFilterState() {
     get: () => format.value,
     set: (f: string) => {
       format.value = f
+      deckId.value = null
       deck.value = ''
       opponentDeck.value = ''
       _loadDeckAndOpponentDeckList()
@@ -124,6 +141,7 @@ export function useFilterState() {
 
   function resetFilters() {
     opponent.value = ''
+    deckId.value = null
     deck.value = ''
     opponentDeck.value = ''
     format.value = ''
@@ -137,6 +155,8 @@ export function useFilterState() {
     opponentModel,
     formatModel,
     // 直接 v-model 可能な ref
+    useDeckManager,
+    deckId,
     deck,
     opponentDeck,
     dateFrom,
@@ -149,6 +169,7 @@ export function useFilterState() {
     playerList,
     opponentList,
     deckList,
+    deckNameList,
     opponentDeckList,
     formatList,
     // 最低試合数

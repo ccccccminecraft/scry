@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models.core import Match, MatchPlayer, Game, Mulligan, Action
+from models.decklist import DeckVersion
 
 router = APIRouter()
 
@@ -131,11 +132,12 @@ def _build_match_id_list(
     db: Session,
     player: str,
     opponent: str | None,
-    deck: str | None,
+    deck_id: int | None,
     opponent_deck: str | None,
     format: str | None,
     date_from: str | None,
     date_to: str | None,
+    deck: str | None = None,
 ) -> list[str]:
     """フィルター条件に合致するマッチIDリストを返す。"""
     from datetime import datetime, timezone, timedelta
@@ -152,7 +154,18 @@ def _build_match_id_list(
         )
         q = q.filter(Match.id.in_(opp_sub))
 
-    if deck:
+    if deck_id:
+        deck_sub = (
+            db.query(MatchPlayer.match_id)
+            .join(DeckVersion, DeckVersion.id == MatchPlayer.deck_version_id)
+            .filter(
+                MatchPlayer.player_name == player,
+                DeckVersion.deck_id == deck_id,
+            )
+            .subquery()
+        )
+        q = q.filter(Match.id.in_(deck_sub))
+    elif deck:
         deck_sub = (
             db.query(MatchPlayer.match_id)
             .filter(
@@ -191,6 +204,7 @@ def _build_match_id_list(
 def get_stats(
     player: str = Query(...),
     opponent: str | None = Query(default=None),
+    deck_id: int | None = Query(default=None),
     deck: str | None = Query(default=None),
     opponent_deck: str | None = Query(default=None),
     format: str | None = Query(default=None),
@@ -202,7 +216,7 @@ def get_stats(
 ):
     """サマリー統計を返す。"""
 
-    match_id_list = _build_match_id_list(db, player, opponent, deck, opponent_deck, format, date_from, date_to)
+    match_id_list = _build_match_id_list(db, player, opponent, deck_id, opponent_deck, format, date_from, date_to, deck)
     match_ids_sub = (
         db.query(Match.id)
         .filter(Match.id.in_(match_id_list))
@@ -403,6 +417,7 @@ def _calc_card_stats(
 def get_card_stats(
     player: str = Query(...),
     opponent: str | None = Query(default=None),
+    deck_id: int | None = Query(default=None),
     deck: str | None = Query(default=None),
     opponent_deck: str | None = Query(default=None),
     format: str | None = Query(default=None),
@@ -413,7 +428,7 @@ def get_card_stats(
     db: Session = Depends(get_db),
 ):
     """カード別統計（play/cast のみ）を返す。perspective=self で自分、opponent で相手のカードを集計。"""
-    match_id_list = _build_match_id_list(db, player, opponent, deck, opponent_deck, format, date_from, date_to)
+    match_id_list = _build_match_id_list(db, player, opponent, deck_id, opponent_deck, format, date_from, date_to, deck)
 
     if not match_id_list:
         return {"cards": []}

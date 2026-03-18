@@ -55,43 +55,7 @@
 
         <!-- フィルター行 -->
         <div class="analysis__filters">
-          <div class="analysis__toolbar-group">
-            <label class="analysis__toolbar-label">フォーマット</label>
-            <select v-model="formatModel" class="analysis__select">
-              <option value="">（すべて）</option>
-              <option v-for="f in formatList" :key="f" :value="f">{{ f }}</option>
-            </select>
-          </div>
-          <div class="analysis__toolbar-group">
-            <label class="analysis__toolbar-label">対戦相手</label>
-            <select v-model="opponentModel" class="analysis__select">
-              <option value="">（すべて）</option>
-              <option v-for="o in opponentList" :key="o" :value="o">{{ o }}</option>
-            </select>
-          </div>
-          <div class="analysis__toolbar-group">
-            <label class="analysis__toolbar-label">使用デッキ</label>
-            <select v-model="deck" class="analysis__select">
-              <option value="">（すべて）</option>
-              <option v-for="d in deckList" :key="d" :value="d">{{ d }}</option>
-            </select>
-          </div>
-          <div class="analysis__toolbar-group">
-            <label class="analysis__toolbar-label">相手デッキ</label>
-            <select v-model="opponentDeck" class="analysis__select">
-              <option value="">（すべて）</option>
-              <option v-for="d in opponentDeckList" :key="d" :value="d">{{ d }}</option>
-            </select>
-          </div>
-          <div class="analysis__toolbar-group">
-            <label class="analysis__toolbar-label">対戦日（開始）</label>
-            <input v-model="dateFrom" type="date" class="analysis__select" />
-          </div>
-          <div class="analysis__toolbar-group">
-            <label class="analysis__toolbar-label">対戦日（終了）</label>
-            <input v-model="dateTo" type="date" class="analysis__select" />
-          </div>
-          <button class="analysis__btn" @click="resetFilters">リセット</button>
+          <FilterBar :show-player="false" />
         </div>
 
         <!-- チャットメッセージ -->
@@ -170,14 +134,15 @@ import {
 } from '../api/analysis'
 import ChatMessage from '../components/ChatMessage.vue'
 import SessionBar from '../components/SessionBar.vue'
+import FilterBar from '../components/FilterBar.vue'
 
 const { showError } = useToast()
 const {
-  playerModel, opponentModel, formatModel,
-  deck, opponentDeck, dateFrom, dateTo,
+  playerModel,
+  useDeckManager, deckId, deck, opponentDeck, dateFrom, dateTo,
   player, opponent, format,
-  playerList, opponentList, deckList, opponentDeckList, formatList,
-  init, resetFilters,
+  playerList, formatList,
+  init,
 } = useFilterState()
 
 // ── 状態 ─────────────────────────────────────────────────────────────────
@@ -332,7 +297,8 @@ async function sendMessage(text: string, isGreeting = false) {
       message: text,
       history: history.length > 0 ? history : undefined,
       opponent: opponent.value || null,
-      deck: deck.value || null,
+      deck: useDeckManager.value ? null : (deck.value || null),
+      deck_id: useDeckManager.value ? (deckId.value ?? null) : null,
       opponent_deck: opponentDeck.value || null,
       format: format.value || null,
       date_from: dateFrom.value || null,
