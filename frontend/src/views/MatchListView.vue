@@ -6,57 +6,7 @@
 
     <!-- フィルターバー -->
     <div class="match-list__filters">
-      <div class="filter-group">
-        <label class="filter-label">フォーマット</label>
-        <select v-model="formatModel" class="filter-select">
-          <option value="">すべて</option>
-          <option v-for="f in formatList" :key="f" :value="f">{{ f }}</option>
-        </select>
-      </div>
-      <div class="filter-group">
-        <label class="filter-label">プレイヤー</label>
-        <select v-model="playerModel" class="filter-select">
-          <option value="">すべて</option>
-          <option v-for="p in playerList" :key="p" :value="p">{{ p }}</option>
-        </select>
-      </div>
-      <div class="filter-group">
-        <label class="filter-label">対戦相手</label>
-        <select v-model="opponentModel" class="filter-select">
-          <option value="">すべて</option>
-          <option v-for="o in opponentList" :key="o" :value="o">{{ o }}</option>
-        </select>
-      </div>
-      <div class="filter-group">
-        <label class="filter-label">デッキ</label>
-        <select v-if="useDeckManager" v-model="deckId" class="filter-select">
-          <option :value="null">すべて</option>
-          <option v-for="d in deckList" :key="d.id" :value="d.id">{{ d.name }}</option>
-        </select>
-        <select v-else v-model="deck" class="filter-select">
-          <option value="">すべて</option>
-          <option v-for="d in deckNameList" :key="d" :value="d">{{ d }}</option>
-        </select>
-        <label class="filter-check-label">
-          <input type="checkbox" v-model="useDeckManager" />
-          デッキ管理
-        </label>
-      </div>
-      <div class="filter-group">
-        <label class="filter-label">相手デッキ</label>
-        <select v-model="opponentDeck" class="filter-select" :disabled="!player">
-          <option value="">すべて</option>
-          <option v-for="d in opponentDeckList" :key="d" :value="d">{{ d }}</option>
-        </select>
-      </div>
-      <div class="filter-group">
-        <label class="filter-label">対戦日時（開始）</label>
-        <input type="date" v-model="dateFrom" class="filter-date" />
-      </div>
-      <div class="filter-group">
-        <label class="filter-label">対戦日時（終了）</label>
-        <input type="date" v-model="dateTo" class="filter-date" />
-      </div>
+      <FilterBar />
     </div>
 
     <div v-if="loading" class="match-list__loading">読み込み中...</div>
@@ -115,13 +65,12 @@ defineOptions({ name: 'MatchListView' })
 import { fetchMatches, type MatchSummary } from '../api/matches'
 import { useToast } from '../composables/useToast'
 import { useFilterState } from '../composables/useFilterState'
+import FilterBar from '../components/FilterBar.vue'
 
 const { showError } = useToast()
 const {
-  playerModel, opponentModel, formatModel,
-  useDeckManager, deckId, deck, opponentDeck, dateFrom, dateTo,
+  useDeckManager, deckId, deck, versionId, opponentDeck, dateFrom, dateTo,
   player, opponent, format,
-  playerList, opponentList, deckList, deckNameList, opponentDeckList, formatList,
   init,
 } = useFilterState()
 
@@ -138,8 +87,9 @@ async function load() {
     const res = await fetchMatches(10, (page.value - 1) * 10, {
       player: player.value || undefined,
       opponent: opponent.value || undefined,
-      deck_id: useDeckManager.value ? (deckId.value ?? undefined) : undefined,
+      deck_id: useDeckManager.value && !versionId.value ? (deckId.value ?? undefined) : undefined,
       deck: useDeckManager.value ? undefined : (deck.value || undefined),
+      version_id: useDeckManager.value ? (versionId.value ?? undefined) : undefined,
       opponent_deck: opponentDeck.value || undefined,
       format: format.value || undefined,
       date_from: dateFrom.value || undefined,
@@ -155,7 +105,7 @@ async function load() {
 }
 
 watch(
-  [player, opponent, useDeckManager, deckId, deck, opponentDeck, format, dateFrom, dateTo],
+  [player, opponent, useDeckManager, deckId, deck, versionId, opponentDeck, format, dateFrom, dateTo],
   () => { page.value = 1; load() },
 )
 
@@ -210,46 +160,11 @@ onActivated(activate)
 
 
 .match-list__filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
   margin-bottom: 16px;
   padding: 10px 16px;
   background: #fff;
   border: 1px solid #e0d8c8;
   border-radius: 6px;
-}
-
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.filter-label {
-  font-size: 10px;
-  color: #7a6a55;
-}
-
-.filter-select,
-.filter-date {
-  padding: 3px 6px;
-  border: 1px solid #c8b89a;
-  border-radius: 4px;
-  background: #fff;
-  color: #2c2416;
-  font-size: 11px;
-  font-family: inherit;
-}
-
-.filter-check-label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: #7a6a55;
-  cursor: pointer;
-  white-space: nowrap;
 }
 
 .match-list__loading,

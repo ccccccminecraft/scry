@@ -41,6 +41,7 @@ def list_matches(
     opponent: str | None = Query(default=None),
     deck_id: int | None = Query(default=None),
     deck: str | None = Query(default=None),
+    version_id: int | None = Query(default=None),
     opponent_deck: str | None = Query(default=None),
     format: str | None = Query(default=None),
     date_from: str | None = Query(default=None, description="YYYY-MM-DD"),
@@ -65,7 +66,17 @@ def list_matches(
         )
         q = q.filter(Match.id.in_(opp_sub))
 
-    if deck_id:
+    if version_id:
+        ver_sub = (
+            db.query(MatchPlayer.match_id)
+            .filter(
+                MatchPlayer.player_name == player,
+                MatchPlayer.deck_version_id == version_id,
+            )
+            .subquery()
+        )
+        q = q.filter(Match.id.in_(ver_sub))
+    elif deck_id:
         deck_sub = (
             db.query(MatchPlayer.match_id)
             .join(DeckVersion, DeckVersion.id == MatchPlayer.deck_version_id)
@@ -148,6 +159,7 @@ def export_count(
     opponent: str | None = Query(default=None),
     deck_id: int | None = Query(default=None),
     deck: str | None = Query(default=None),
+    version_id: int | None = Query(default=None),
     opponent_deck: str | None = Query(default=None),
     format: str | None = Query(default=None),
     date_from: str | None = Query(default=None),
@@ -156,7 +168,7 @@ def export_count(
 ):
     """エクスポート対象マッチ数を返す。"""
     from app.routers.stats import _build_match_id_list
-    match_ids = _build_match_id_list(db, player, opponent, deck_id, opponent_deck, format, date_from, date_to, deck)
+    match_ids = _build_match_id_list(db, player, opponent, deck_id, opponent_deck, format, date_from, date_to, deck, version_id)
     return {"count": len(match_ids)}
 
 
@@ -166,6 +178,7 @@ def export_matches(
     opponent: str | None = Query(default=None),
     deck_id: int | None = Query(default=None),
     deck: str | None = Query(default=None),
+    version_id: int | None = Query(default=None),
     opponent_deck: str | None = Query(default=None),
     format: str | None = Query(default=None),
     date_from: str | None = Query(default=None),
@@ -178,7 +191,7 @@ def export_matches(
     """対戦データを Markdown 形式でエクスポートする。"""
     from app.routers.stats import _build_match_id_list, _calc_deck_stats
 
-    match_ids = _build_match_id_list(db, player, opponent, deck_id, opponent_deck, format, date_from, date_to, deck)
+    match_ids = _build_match_id_list(db, player, opponent, deck_id, opponent_deck, format, date_from, date_to, deck, version_id)
     deck_name = (db.get(Deck, deck_id).name if deck_id and db.get(Deck, deck_id) else None) or deck
     effective_limit = None if no_limit else limit
     markdown = _build_export_markdown(player, db, match_ids, detail_level, effective_limit,

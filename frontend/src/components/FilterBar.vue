@@ -24,6 +24,16 @@
     <div class="filter-bar__group">
       <label class="filter-bar__label">使用デッキ</label>
       <div class="filter-bar__deck-row">
+        <select
+          v-model="versionId"
+          class="filter-bar__select"
+          :disabled="!useDeckManager || !deckId"
+        >
+          <option :value="null">すべてのバージョン</option>
+          <option v-for="v in versionList" :key="v.id" :value="v.id">
+            v{{ v.version_number }}{{ v.memo ? ` ${v.memo}` : '' }}
+          </option>
+        </select>
         <select v-if="useDeckManager" v-model="deckId" class="filter-bar__select">
           <option :value="null">すべて</option>
           <option v-for="d in deckList" :key="d.id" :value="d.id">{{ d.name }}</option>
@@ -63,8 +73,8 @@ withDefaults(defineProps<{ showPlayer?: boolean }>(), { showPlayer: true })
 
 const {
   playerModel, opponentModel, formatModel,
-  useDeckManager, deckId, deck, opponentDeck, dateFrom, dateTo,
-  playerList, opponentList, deckList, deckNameList, opponentDeckList, formatList,
+  useDeckManager, deckId, deck, versionId, opponentDeck, dateFrom, dateTo,
+  playerList, opponentList, deckList, deckNameList, versionList, opponentDeckList, formatList,
 } = useFilterState()
 </script>
 

@@ -91,6 +91,7 @@ export async function streamChat(
     opponent?: string | null
     deck?: string | null
     deck_id?: number | null
+    version_id?: number | null
     opponent_deck?: string | null
     format?: string | null
     date_from?: string | null

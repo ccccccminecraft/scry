@@ -138,6 +138,7 @@ def _build_match_id_list(
     date_from: str | None,
     date_to: str | None,
     deck: str | None = None,
+    version_id: int | None = None,
 ) -> list[str]:
     """フィルター条件に合致するマッチIDリストを返す。"""
     from datetime import datetime, timezone, timedelta
@@ -154,7 +155,17 @@ def _build_match_id_list(
         )
         q = q.filter(Match.id.in_(opp_sub))
 
-    if deck_id:
+    if version_id:
+        ver_sub = (
+            db.query(MatchPlayer.match_id)
+            .filter(
+                MatchPlayer.player_name == player,
+                MatchPlayer.deck_version_id == version_id,
+            )
+            .subquery()
+        )
+        q = q.filter(Match.id.in_(ver_sub))
+    elif deck_id:
         deck_sub = (
             db.query(MatchPlayer.match_id)
             .join(DeckVersion, DeckVersion.id == MatchPlayer.deck_version_id)
@@ -206,6 +217,7 @@ def get_stats(
     opponent: str | None = Query(default=None),
     deck_id: int | None = Query(default=None),
     deck: str | None = Query(default=None),
+    version_id: int | None = Query(default=None),
     opponent_deck: str | None = Query(default=None),
     format: str | None = Query(default=None),
     date_from: str | None = Query(default=None, description="YYYY-MM-DD"),
@@ -216,7 +228,7 @@ def get_stats(
 ):
     """サマリー統計を返す。"""
 
-    match_id_list = _build_match_id_list(db, player, opponent, deck_id, opponent_deck, format, date_from, date_to, deck)
+    match_id_list = _build_match_id_list(db, player, opponent, deck_id, opponent_deck, format, date_from, date_to, deck, version_id)
     match_ids_sub = (
         db.query(Match.id)
         .filter(Match.id.in_(match_id_list))
@@ -419,6 +431,7 @@ def get_card_stats(
     opponent: str | None = Query(default=None),
     deck_id: int | None = Query(default=None),
     deck: str | None = Query(default=None),
+    version_id: int | None = Query(default=None),
     opponent_deck: str | None = Query(default=None),
     format: str | None = Query(default=None),
     date_from: str | None = Query(default=None, description="YYYY-MM-DD"),
@@ -428,7 +441,7 @@ def get_card_stats(
     db: Session = Depends(get_db),
 ):
     """カード別統計（play/cast のみ）を返す。perspective=self で自分、opponent で相手のカードを集計。"""
-    match_id_list = _build_match_id_list(db, player, opponent, deck_id, opponent_deck, format, date_from, date_to, deck)
+    match_id_list = _build_match_id_list(db, player, opponent, deck_id, opponent_deck, format, date_from, date_to, deck, version_id)
 
     if not match_id_list:
         return {"cards": []}

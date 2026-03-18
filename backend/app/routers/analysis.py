@@ -39,13 +39,14 @@ def build_stats_text(
     opponent: str | None = None,
     deck: str | None = None,
     deck_id: int | None = None,
+    version_id: int | None = None,
     opponent_deck: str | None = None,
     format_: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
 ) -> str:
     """プレイヤーの統計データをテキスト形式で返す。"""
-    match_ids = _build_match_id_list(db, player, opponent, deck_id, opponent_deck, format_, date_from, date_to, deck=deck)
+    match_ids = _build_match_id_list(db, player, opponent, deck_id, opponent_deck, format_, date_from, date_to, deck=deck, version_id=version_id)
     if not match_ids:
         return f"（{player} のデータはありません）"
 
@@ -155,6 +156,7 @@ class ChatRequest(BaseModel):
     opponent: str | None = None
     deck: str | None = None
     deck_id: int | None = None
+    version_id: int | None = None
     opponent_deck: str | None = None
     format: str | None = None
     date_from: str | None = None
@@ -276,6 +278,7 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
         opponent=req.opponent,
         deck=req.deck,
         deck_id=req.deck_id,
+        version_id=req.version_id,
         opponent_deck=req.opponent_deck,
         format_=req.format,
         date_from=req.date_from,

@@ -4,56 +4,7 @@
       <h1 class="stats__title">統計</h1>
     </div>
     <div class="stats__filters">
-      <div class="stats__filter-group">
-        <label class="stats__label">フォーマット</label>
-        <select v-model="formatModel" class="stats__select">
-          <option value="">すべて</option>
-          <option v-for="f in formatList" :key="f" :value="f">{{ f }}</option>
-        </select>
-      </div>
-      <div class="stats__filter-group">
-        <label class="stats__label">プレイヤー</label>
-        <select v-model="playerModel" class="stats__select">
-          <option v-for="p in playerList" :key="p" :value="p">{{ p }}</option>
-        </select>
-      </div>
-      <div class="stats__filter-group">
-        <label class="stats__label">対戦相手</label>
-        <select v-model="opponentModel" class="stats__select">
-          <option value="">すべて</option>
-          <option v-for="o in opponentList" :key="o" :value="o">{{ o }}</option>
-        </select>
-      </div>
-      <div class="stats__filter-group">
-        <label class="stats__label">デッキ</label>
-        <select v-if="useDeckManager" v-model="deckId" class="stats__select">
-          <option :value="null">すべて</option>
-          <option v-for="d in deckList" :key="d.id" :value="d.id">{{ d.name }}</option>
-        </select>
-        <select v-else v-model="deck" class="stats__select">
-          <option value="">すべて</option>
-          <option v-for="d in deckNameList" :key="d" :value="d">{{ d }}</option>
-        </select>
-        <label class="stats__check-label">
-          <input type="checkbox" v-model="useDeckManager" />
-          デッキ管理
-        </label>
-      </div>
-      <div class="stats__filter-group">
-        <label class="stats__label">相手デッキ</label>
-        <select v-model="opponentDeck" class="stats__select">
-          <option value="">すべて</option>
-          <option v-for="d in opponentDeckList" :key="d" :value="d">{{ d }}</option>
-        </select>
-      </div>
-      <div class="stats__filter-group">
-        <label class="stats__label">対戦日時（開始）</label>
-        <input type="date" v-model="dateFrom" class="stats__input-date" />
-      </div>
-      <div class="stats__filter-group">
-        <label class="stats__label">対戦日時（終了）</label>
-        <input type="date" v-model="dateTo" class="stats__input-date" />
-      </div>
+      <FilterBar />
     </div>
 
     <div v-if="playerList.length === 0" class="stats__empty">
@@ -180,13 +131,13 @@ import { useFilterState } from '../composables/useFilterState'
 import WinRateHistoryChart from '../components/charts/WinRateHistoryChart.vue'
 import FirstSecondChart from '../components/charts/FirstSecondChart.vue'
 import DeckStatsChart from '../components/charts/DeckStatsChart.vue'
+import FilterBar from '../components/FilterBar.vue'
 
 const { showError } = useToast()
 const {
-  playerModel, opponentModel, formatModel,
-  useDeckManager, deckId, deck, opponentDeck, dateFrom, dateTo,
+  useDeckManager, deckId, deck, versionId, opponentDeck, dateFrom, dateTo,
   player, opponent, format,
-  playerList, opponentList, deckList, deckNameList, opponentDeckList, formatList,
+  playerList,
   minDeckMatches,
   init,
 } = useFilterState()
@@ -239,8 +190,9 @@ async function loadStats() {
     stats.value = await fetchStats({
       player: player.value,
       opponent: opponent.value || undefined,
-      deck_id: useDeckManager.value ? (deckId.value ?? undefined) : undefined,
+      deck_id: useDeckManager.value && !versionId.value ? (deckId.value ?? undefined) : undefined,
       deck: useDeckManager.value ? undefined : (deck.value || undefined),
+      version_id: useDeckManager.value ? (versionId.value ?? undefined) : undefined,
       opponent_deck: opponentDeck.value || undefined,
       format: format.value || undefined,
       date_from: dateFrom.value || undefined,
@@ -254,9 +206,9 @@ async function loadStats() {
 }
 
 function _deckFilters() {
-  return useDeckManager.value
-    ? { deck_id: deckId.value ?? undefined }
-    : { deck: deck.value || undefined }
+  if (!useDeckManager.value) return { deck: deck.value || undefined }
+  if (versionId.value) return { version_id: versionId.value }
+  return { deck_id: deckId.value ?? undefined }
 }
 
 async function loadCardStats() {
@@ -296,7 +248,7 @@ async function loadOpponentCardStats() {
 }
 
 watch(
-  [player, opponent, useDeckManager, deckId, deck, opponentDeck, format, dateFrom, dateTo],
+  [player, opponent, useDeckManager, deckId, deck, versionId, opponentDeck, format, dateFrom, dateTo],
   loadAll,
 )
 
@@ -327,54 +279,11 @@ onActivated(activate)
 }
 
 .stats__filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
   margin-bottom: 16px;
   padding: 10px 16px;
   background: #fff;
   border: 1px solid #e0d8c8;
   border-radius: 6px;
-}
-
-.stats__filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.stats__label {
-  font-size: 10px;
-  color: #7a6a55;
-}
-
-.stats__select {
-  padding: 3px 6px;
-  border: 1px solid #c8b89a;
-  border-radius: 4px;
-  background: #fff;
-  color: #2c2416;
-  font-size: 11px;
-}
-
-.stats__check-label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: #7a6a55;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.stats__input-date {
-  padding: 3px 6px;
-  border: 1px solid #c8b89a;
-  border-radius: 4px;
-  background: #fff;
-  color: #2c2416;
-  font-size: 11px;
-  font-family: inherit;
 }
 
 .stats__empty {

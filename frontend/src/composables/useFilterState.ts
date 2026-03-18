@@ -2,7 +2,7 @@ import { ref, computed, watch } from 'vue'
 import {
   fetchPlayers, fetchOpponents, fetchPlayerDecks, fetchOpponentDecks, fetchFormats,
 } from '../api/stats'
-import { fetchDecks, type Deck } from '../api/decklist'
+import { fetchDecks, fetchVersions, type Deck, type DeckVersionSummary } from '../api/decklist'
 import { fetchSettings } from '../api/settings'
 
 // ── module-level shared state (全ビューで共有) ────────────────────────────────
@@ -20,13 +20,27 @@ const playerList = ref<string[]>([])
 const opponentList = ref<string[]>([])
 const deckList = ref<Deck[]>([])           // デッキ管理リスト
 const deckNameList = ref<string[]>([])     // デッキ定義リスト
+const versionList = ref<DeckVersionSummary[]>([])  // 選択中デッキのバージョン一覧
 const opponentDeckList = ref<string[]>([])
 const formatList = ref<string[]>([])
+
+const versionId = ref<number | null>(null)
 
 // モード切替時にデッキ選択をリセット
 watch(useDeckManager, () => {
   deckId.value = null
   deck.value = ''
+  versionId.value = null
+  versionList.value = []
+})
+
+// デッキ選択変更時にバージョン一覧を再取得
+watch(deckId, async (newId) => {
+  versionId.value = null
+  if (newId === null) { versionList.value = []; return }
+  try {
+    versionList.value = await fetchVersions(newId)
+  } catch { versionList.value = [] }
 })
 
 // settings から取得した最低試合数
@@ -143,6 +157,7 @@ export function useFilterState() {
     opponent.value = ''
     deckId.value = null
     deck.value = ''
+    versionId.value = null
     opponentDeck.value = ''
     format.value = ''
     dateFrom.value = ''
@@ -158,6 +173,7 @@ export function useFilterState() {
     useDeckManager,
     deckId,
     deck,
+    versionId,
     opponentDeck,
     dateFrom,
     dateTo,
@@ -170,6 +186,7 @@ export function useFilterState() {
     opponentList,
     deckList,
     deckNameList,
+    versionList,
     opponentDeckList,
     formatList,
     // 最低試合数

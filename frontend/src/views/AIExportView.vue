@@ -5,58 +5,7 @@
     <!-- フィルター -->
     <div class="ai-export__section">
       <div class="ai-export__section-label">フィルター</div>
-      <div class="ai-export__filters">
-        <div class="ai-export__group">
-          <label class="ai-export__label">フォーマット</label>
-          <select v-model="formatModel" class="ai-export__select">
-            <option value="">すべて</option>
-            <option v-for="f in formatList" :key="f" :value="f">{{ f }}</option>
-          </select>
-        </div>
-        <div class="ai-export__group">
-          <label class="ai-export__label">プレイヤー</label>
-          <select v-model="playerModel" class="ai-export__select">
-            <option v-for="p in playerList" :key="p" :value="p">{{ p }}</option>
-          </select>
-        </div>
-        <div class="ai-export__group">
-          <label class="ai-export__label">対戦相手</label>
-          <select v-model="opponentModel" class="ai-export__select">
-            <option value="">すべて</option>
-            <option v-for="o in opponentList" :key="o" :value="o">{{ o }}</option>
-          </select>
-        </div>
-        <div class="ai-export__group">
-          <label class="ai-export__label">使用デッキ</label>
-          <select v-if="useDeckManager" v-model="deckId" class="ai-export__select">
-            <option :value="null">すべて</option>
-            <option v-for="d in deckList" :key="d.id" :value="d.id">{{ d.name }}</option>
-          </select>
-          <select v-else v-model="deck" class="ai-export__select">
-            <option value="">すべて</option>
-            <option v-for="d in deckNameList" :key="d" :value="d">{{ d }}</option>
-          </select>
-          <label class="ai-export__check-label">
-            <input type="checkbox" v-model="useDeckManager" />
-            デッキ管理
-          </label>
-        </div>
-        <div class="ai-export__group">
-          <label class="ai-export__label">相手デッキ</label>
-          <select v-model="opponentDeck" class="ai-export__select">
-            <option value="">すべて</option>
-            <option v-for="d in opponentDeckList" :key="d" :value="d">{{ d }}</option>
-          </select>
-        </div>
-        <div class="ai-export__group">
-          <label class="ai-export__label">対戦日（開始）</label>
-          <input v-model="dateFrom" type="date" class="ai-export__select" />
-        </div>
-        <div class="ai-export__group">
-          <label class="ai-export__label">対戦日（終了）</label>
-          <input v-model="dateTo" type="date" class="ai-export__select" />
-        </div>
-      </div>
+      <FilterBar />
     </div>
 
     <!-- 対象件数 -->
@@ -124,13 +73,12 @@ import { fetchExportCount, fetchExportMarkdown, type ExportDetailLevel } from '.
 import { useToast } from '../composables/useToast'
 import { useFilterState } from '../composables/useFilterState'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import FilterBar from '../components/FilterBar.vue'
 
 const { showError } = useToast()
 const {
-  playerModel, opponentModel, formatModel,
-  useDeckManager, deckId, deck, opponentDeck, dateFrom, dateTo,
+  useDeckManager, deckId, deck, versionId, opponentDeck, dateFrom, dateTo,
   player, opponent, format,
-  playerList, opponentList, deckList, deckNameList, opponentDeckList, formatList,
   init,
 } = useFilterState()
 
@@ -149,14 +97,15 @@ async function loadCount() {
   } catch { /* ignore */ }
 }
 
-watch([player, opponent, useDeckManager, deckId, deck, opponentDeck, format, dateFrom, dateTo], loadCount)
+watch([player, opponent, useDeckManager, deckId, deck, versionId, opponentDeck, format, dateFrom, dateTo], loadCount)
 
 function currentFilters() {
   return {
     player: player.value,
     opponent: opponent.value || undefined,
-    deck_id: useDeckManager.value ? (deckId.value ?? undefined) : undefined,
+    deck_id: useDeckManager.value && !versionId.value ? (deckId.value ?? undefined) : undefined,
     deck: useDeckManager.value ? undefined : (deck.value || undefined),
+    version_id: useDeckManager.value ? (versionId.value ?? undefined) : undefined,
     opponent_deck: opponentDeck.value || undefined,
     format: format.value || undefined,
     date_from: dateFrom.value || undefined,
@@ -280,42 +229,6 @@ onMounted(async () => {
   padding-bottom: 4px;
 }
 
-.ai-export__filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.ai-export__group {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.ai-export__label {
-  font-size: 11px;
-  color: #7a6a55;
-}
-
-.ai-export__select {
-  padding: 3px 6px;
-  border: 1px solid #c8b89a;
-  border-radius: 4px;
-  font-size: 11px;
-  background: #fff;
-  color: #2c2416;
-  font-family: inherit;
-}
-
-.ai-export__check-label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: #7a6a55;
-  cursor: pointer;
-  white-space: nowrap;
-}
 
 .ai-export__radios {
   display: flex;

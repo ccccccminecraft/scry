@@ -35,6 +35,7 @@ export interface StatsFilters {
   opponent?: string
   deck_id?: number
   deck?: string
+  version_id?: number
   opponent_deck?: string
   format?: string
   date_from?: string
