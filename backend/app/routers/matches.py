@@ -396,6 +396,67 @@ def _build_export_markdown(
     return "\n".join(lines)
 
 
+def _bulk_assign_query(db: Session, player: str, format_: str | None, deck_name: str | None, date_from: str | None, date_to: str | None):
+    """一括適用フィルターに合致する MatchPlayer クエリを返す。"""
+    q = (
+        db.query(MatchPlayer)
+        .join(Match, Match.id == MatchPlayer.match_id)
+        .filter(MatchPlayer.player_name == player)
+    )
+    if format_:
+        q = q.filter(Match.format == format_)
+    if deck_name:
+        q = q.filter(MatchPlayer.deck_name == deck_name)
+    if date_from:
+        q = q.filter(Match.played_at >= datetime.fromisoformat(date_from).replace(tzinfo=timezone.utc))
+    if date_to:
+        dt_to = datetime.fromisoformat(date_to).replace(tzinfo=timezone.utc) + timedelta(days=1)
+        q = q.filter(Match.played_at < dt_to)
+    return q
+
+
+@router.get("/matches/bulk-assign-deck-version/count")
+def bulk_assign_count(
+    player: str = Query(...),
+    format: str | None = Query(default=None),
+    deck_name: str | None = Query(default=None),
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    overwrite: bool = Query(default=False),
+    db: Session = Depends(get_db),
+):
+    """一括適用対象の件数を返す。"""
+    q = _bulk_assign_query(db, player, format, deck_name, date_from, date_to)
+    if not overwrite:
+        q = q.filter(MatchPlayer.deck_version_id.is_(None))
+    return {"count": q.count()}
+
+
+class BulkAssignBody(BaseModel):
+    deck_version_id: int
+    player: str
+    format: str | None = None
+    deck_name: str | None = None
+    date_from: str | None = None
+    date_to: str | None = None
+    overwrite: bool = False
+
+
+@router.post("/matches/bulk-assign-deck-version")
+def bulk_assign_deck_version(body: BulkAssignBody, db: Session = Depends(get_db)):
+    """フィルター条件に合致する対戦にデッキバージョンを一括適用する。"""
+    if db.get(DeckVersion, body.deck_version_id) is None:
+        raise HTTPException(status_code=404, detail="DeckVersion not found")
+    q = _bulk_assign_query(db, body.player, body.format, body.deck_name, body.date_from, body.date_to)
+    if not body.overwrite:
+        q = q.filter(MatchPlayer.deck_version_id.is_(None))
+    rows = q.all()
+    for mp in rows:
+        mp.deck_version_id = body.deck_version_id
+    db.commit()
+    return {"updated": len(rows)}
+
+
 @router.get("/matches/latest-date")
 def get_latest_match_date(db: Session = Depends(get_db)):
     """最新の played_at を返す。matches が空のときは null を返す。"""

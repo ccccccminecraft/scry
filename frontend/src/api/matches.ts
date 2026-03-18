@@ -109,6 +109,28 @@ export async function fetchExportMarkdown(params: ExportParams): Promise<string>
   return res.data
 }
 
+export interface BulkAssignParams {
+  player: string
+  format?: string
+  deck_name?: string
+  date_from?: string
+  date_to?: string
+  overwrite?: boolean
+}
+
+export async function fetchBulkAssignCount(params: BulkAssignParams): Promise<number> {
+  const res = await client.get<{ count: number }>('/api/matches/bulk-assign-deck-version/count', { params })
+  return res.data.count
+}
+
+export async function bulkAssignDeckVersion(deck_version_id: number, params: BulkAssignParams): Promise<number> {
+  const res = await client.post<{ updated: number }>('/api/matches/bulk-assign-deck-version', {
+    deck_version_id,
+    ...params,
+  })
+  return res.data.updated
+}
+
 export async function fetchLatestMatchDate(): Promise<string | null> {
   const res = await client.get<{ latest_date: string | null }>('/api/matches/latest-date')
   return res.data.latest_date

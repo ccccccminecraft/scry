@@ -63,6 +63,7 @@
         <div class="pane__header">
           <span class="pane__title">v{{ selectedVersion.version_number }} {{ selectedVersion.memo ?? '' }}</span>
           <div class="pane__header-actions">
+            <button class="pane__btn" @click="openBulkApply">一括適用</button>
             <button class="pane__btn pane__btn--danger" @click="confirmDeleteVersion">削除</button>
           </div>
         </div>
@@ -160,6 +161,56 @@
       </div>
     </div>
 
+    <!-- 一括適用モーダル -->
+    <div v-if="bulkModal.visible" class="modal-overlay" @click.self="bulkModal.visible = false">
+      <div class="modal">
+        <div class="modal__title">「{{ bulkModal.versionLabel }}」を対戦履歴に一括適用</div>
+        <div class="modal__field">
+          <label class="modal__label">プレイヤー</label>
+          <select v-model="bulkModal.player" class="modal__select" @change="loadBulkCount">
+            <option v-for="p in bulkPlayerList" :key="p" :value="p">{{ p }}</option>
+          </select>
+        </div>
+        <div class="modal__field">
+          <label class="modal__label">フォーマット</label>
+          <select v-model="bulkModal.format" class="modal__select" @change="loadBulkCount">
+            <option value="">すべて</option>
+            <option v-for="f in bulkFormatList" :key="f" :value="f">{{ f }}</option>
+          </select>
+        </div>
+        <div class="modal__field">
+          <label class="modal__label">デッキ名</label>
+          <input v-model="bulkModal.deckName" type="text" class="modal__input" @input="loadBulkCount" />
+        </div>
+        <div class="modal__field">
+          <label class="modal__label">対戦日（開始）</label>
+          <input v-model="bulkModal.dateFrom" type="date" class="modal__input" @change="loadBulkCount" />
+        </div>
+        <div class="modal__field">
+          <label class="modal__label">対戦日（終了）</label>
+          <input v-model="bulkModal.dateTo" type="date" class="modal__input" @change="loadBulkCount" />
+        </div>
+        <div class="modal__field">
+          <label class="modal__label">適用方法</label>
+          <div class="modal__radio-group">
+            <label><input type="radio" v-model="bulkModal.overwrite" :value="false" @change="loadBulkCount" /> スキップ（設定済みはそのまま）</label>
+            <label><input type="radio" v-model="bulkModal.overwrite" :value="true" @change="loadBulkCount" /> 上書き（設定済みも含めて適用）</label>
+          </div>
+        </div>
+        <div class="modal__count">
+          対象: <span class="modal__count-num">{{ bulkModal.count !== null ? `${bulkModal.count} 件` : '—' }}</span>
+        </div>
+        <div class="modal__footer">
+          <button class="modal__btn" @click="bulkModal.visible = false">キャンセル</button>
+          <button
+            class="modal__btn modal__btn--primary"
+            :disabled="!bulkModal.player || bulkModal.count === 0 || bulkModal.applying"
+            @click="applyBulk"
+          >{{ bulkModal.applying ? '適用中…' : '適用する' }}</button>
+        </div>
+      </div>
+    </div>
+
     <ConfirmDialog
       :visible="confirmVisible"
       :message="confirmMessage"
@@ -171,7 +222,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, reactive, onMounted, watch } from 'vue'
 import { useToast } from '../composables/useToast'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import {
@@ -189,6 +240,8 @@ import {
   type DeckVersionSummary,
   type DeckVersionDetail,
 } from '../api/decklist'
+import { fetchPlayers, fetchFormats } from '../api/stats'
+import { fetchBulkAssignCount, bulkAssignDeckVersion } from '../api/matches'
 
 const { showSuccess, showError } = useToast()
 
@@ -232,6 +285,23 @@ const versionError = ref('')
 const confirmVisible = ref(false)
 const confirmMessage = ref('')
 const pendingAction = ref<(() => Promise<void>) | null>(null)
+
+// Bulk apply modal
+const bulkModal = reactive({
+  visible: false,
+  versionId: null as number | null,
+  versionLabel: '',
+  player: '',
+  format: '',
+  deckName: '',
+  dateFrom: '',
+  dateTo: '',
+  overwrite: false,
+  count: null as number | null,
+  applying: false,
+})
+const bulkPlayerList = ref<string[]>([])
+const bulkFormatList = ref<string[]>([])
 
 const canSaveVersion = computed(() => {
   if (versionSource.value === 'text') return versionText.value.trim().length > 0
@@ -385,6 +455,65 @@ async function onConfirm() {
 
 function formatDate(iso: string): string {
   return iso.slice(0, 10)
+}
+
+async function openBulkApply() {
+  if (!selectedVersion.value || !selectedDeck.value) return
+  bulkModal.versionId = selectedVersion.value.id
+  bulkModal.versionLabel = `${selectedDeck.value.name} v${selectedVersion.value.version_number}`
+  bulkModal.format = selectedDeck.value.format ?? ''
+  bulkModal.deckName = selectedDeck.value.name
+  bulkModal.dateFrom = ''
+  bulkModal.dateTo = ''
+  bulkModal.overwrite = false
+  bulkModal.count = null
+  bulkModal.applying = false
+  try {
+    const [players, formats] = await Promise.all([fetchPlayers(1), fetchFormats()])
+    bulkPlayerList.value = players
+    bulkFormatList.value = formats
+    bulkModal.player = players[0] ?? ''
+  } catch {
+    showError('データの取得に失敗しました')
+    return
+  }
+  bulkModal.visible = true
+  await loadBulkCount()
+}
+
+async function loadBulkCount() {
+  if (!bulkModal.player) { bulkModal.count = null; return }
+  try {
+    bulkModal.count = await fetchBulkAssignCount({
+      player: bulkModal.player,
+      format: bulkModal.format || undefined,
+      deck_name: bulkModal.deckName || undefined,
+      date_from: bulkModal.dateFrom || undefined,
+      date_to: bulkModal.dateTo || undefined,
+      overwrite: bulkModal.overwrite,
+    })
+  } catch { /* ignore */ }
+}
+
+async function applyBulk() {
+  if (!bulkModal.versionId || !bulkModal.player) return
+  bulkModal.applying = true
+  try {
+    const updated = await bulkAssignDeckVersion(bulkModal.versionId, {
+      player: bulkModal.player,
+      format: bulkModal.format || undefined,
+      deck_name: bulkModal.deckName || undefined,
+      date_from: bulkModal.dateFrom || undefined,
+      date_to: bulkModal.dateTo || undefined,
+      overwrite: bulkModal.overwrite,
+    })
+    bulkModal.visible = false
+    showSuccess(`${updated} 件に適用しました`)
+  } catch {
+    showError('適用に失敗しました')
+  } finally {
+    bulkModal.applying = false
+  }
 }
 </script>
 
@@ -701,6 +830,16 @@ function formatDate(iso: string): string {
   border: 1px solid #d8a0a0;
   border-radius: 4px;
   padding: 6px 10px;
+}
+
+.modal__count {
+  font-size: 13px;
+  color: #7a6a55;
+}
+
+.modal__count-num {
+  font-weight: bold;
+  color: #2c2416;
 }
 
 .modal__footer {
