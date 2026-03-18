@@ -51,7 +51,7 @@
     <!-- 中ペイン: バージョン一覧 -->
     <div class="pane pane--middle">
       <template v-if="selectedDeck">
-        <div class="pane__header">
+        <div class="pane__header pane__header--col">
           <span class="pane__title">{{ selectedDeck.name }}</span>
           <div class="pane__header-actions">
             <button class="pane__btn" @click="openEditDeck">編集</button>
@@ -714,6 +714,12 @@ async function applyBulk() {
   border-bottom: 1px solid #e0d8c8;
   background: #faf7f0;
   flex-shrink: 0;
+}
+
+.pane__header--col {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
 }
 
 .pane__title {
