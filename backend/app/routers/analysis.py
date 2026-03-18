@@ -24,11 +24,41 @@ from models.analysis import (
     AnalysisSession, AnalysisMessage, PromptTemplate, QuestionSet,
 )
 from models.core import Match, Game, Mulligan, Action
+from models.decklist import DeckVersion
 from app.routers.settings import get_api_key
 from app.routers.stats import _build_match_id_list, _calc_deck_stats
 
 router = APIRouter()
 _log = logging.getLogger(__name__)
+
+
+# ── デッキリストテキスト生成 ────────────────────────────────────────────────
+
+def _build_deck_list_text(db: Session, version_id: int) -> str:
+    """DeckVersion からデッキリストテキストを生成する。"""
+    ver = db.get(DeckVersion, version_id)
+    if ver is None:
+        return ""
+    main = [c for c in ver.cards if not c.is_sideboard]
+    side = [c for c in ver.cards if c.is_sideboard]
+    if not main and not side:
+        return ""
+    label = f"{ver.deck.name} v{ver.version_number}"
+    if ver.memo:
+        label += f" {ver.memo}"
+    lines = [
+        "【使用デッキリスト】",
+        f"デッキ: {label}",
+        "",
+        f"メインデッキ ({sum(c.quantity for c in main)}):",
+    ]
+    for c in sorted(main, key=lambda x: x.card.name):
+        lines.append(f"{c.quantity} {c.card.name}")
+    if side:
+        lines += ["", f"サイドボード ({sum(c.quantity for c in side)}):"]
+        for c in sorted(side, key=lambda x: x.card.name):
+            lines.append(f"{c.quantity} {c.card.name}")
+    return "\n".join(lines)
 
 
 # ── 統計テキスト生成 ────────────────────────────────────────────────────────
@@ -141,6 +171,17 @@ def build_stats_text(
         lines.append("よく使うカード TOP5:")
         for card_name, cnt in card_rows:
             lines.append(f"  {card_name}: {cnt}回使用")
+
+    effective_version_id = version_id
+    if not effective_version_id and deck_id:
+        latest = db.query(DeckVersion).filter(DeckVersion.deck_id == deck_id).order_by(DeckVersion.version_number.desc()).first()
+        if latest:
+            effective_version_id = latest.id
+    if effective_version_id:
+        deck_text = _build_deck_list_text(db, effective_version_id)
+        if deck_text:
+            lines.append("")
+            lines.append(deck_text)
 
     return "\n".join(lines)
 
