@@ -387,7 +387,7 @@ watch(player, async () => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #f0ece0;
+  background: #fff;
 }
 
 .analysis__title {
@@ -473,6 +473,7 @@ watch(player, async () => {
   padding: 16px;
   display: flex;
   flex-direction: column;
+  background: #fff;
 }
 
 .analysis__empty {

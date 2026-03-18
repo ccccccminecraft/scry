@@ -49,10 +49,10 @@ function formatDate(iso: string): string {
 .session-bar {
   width: 180px;
   flex-shrink: 0;
-  background: #2c2416;
+  background: #faf7f0;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid #4a3c2a;
+  border-right: 1px solid #e0d8c8;
 }
 
 .session-bar__header {
@@ -60,12 +60,12 @@ function formatDate(iso: string): string {
   align-items: center;
   justify-content: space-between;
   padding: 12px 12px 8px;
-  border-bottom: 1px solid #4a3c2a;
+  border-bottom: 1px solid #e0d8c8;
 }
 
 .session-bar__label {
   font-size: 11px;
-  color: #c8b89a;
+  color: #7a6a55;
   font-weight: bold;
 }
 
@@ -91,20 +91,21 @@ function formatDate(iso: string): string {
 .session-bar__item {
   padding: 8px 12px;
   cursor: pointer;
-  border-bottom: 1px solid #3a3020;
+  border-bottom: 1px solid #e0d8c8;
 }
 
 .session-bar__item:hover {
-  background: #3a3020;
+  background: #f0ece0;
 }
 
 .session-bar__item--active {
-  background: #4a3c2a;
+  background: #e8f0fa;
+  border-left: 3px solid #4a6fa5;
 }
 
 .session-bar__title {
   font-size: 12px;
-  color: #f0ece0;
+  color: #2c2416;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
