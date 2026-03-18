@@ -100,6 +100,15 @@ async def fill_scryfall_ids(card_ids: list[int]) -> None:
                         card.scryfall_id = result["scryfall_id"]
                         card.image_url = result["image_url"]
                         db.commit()
+                    elif existing.id != card.id:
+                        # 同一 scryfall_id を持つ Card が既に存在する（同カードの別印刷版など）
+                        # DeckVersionCard の参照を既存カードに付け替えてからこのカード行を削除
+                        from models.decklist import DeckVersionCard
+                        db.query(DeckVersionCard).filter(
+                            DeckVersionCard.card_id == card.id
+                        ).update({"card_id": existing.id})
+                        db.delete(card)
+                        db.commit()
             except Exception:
                 pass
             await asyncio.sleep(0.05)
