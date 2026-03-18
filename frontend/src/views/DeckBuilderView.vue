@@ -65,9 +65,15 @@
           <div class="pane__header-actions">
             <button class="pane__btn" @click="openBulkApply">一括適用</button>
             <button class="pane__btn pane__btn--danger" @click="confirmDeleteVersion">削除</button>
+            <div class="view-toggle">
+              <button class="view-toggle__btn" :class="{ 'view-toggle__btn--active': viewMode === 'list' }" @click="viewMode = 'list'">リスト</button>
+              <button class="view-toggle__btn" :class="{ 'view-toggle__btn--active': viewMode === 'card' }" @click="viewMode = 'card'">カード</button>
+            </div>
           </div>
         </div>
-        <div class="card-list">
+
+        <!-- リスト表示 -->
+        <div v-if="viewMode === 'list'" class="card-list">
           <div class="card-section__title">
             メインデッキ ({{ selectedVersion.main.reduce((a, c) => a + c.quantity, 0) }})
           </div>
@@ -96,6 +102,43 @@
             <div v-else class="card-entry__img-placeholder" />
             <span class="card-entry__qty">{{ entry.quantity }}</span>
             <span class="card-entry__name">{{ entry.card_name }}</span>
+          </div>
+        </div>
+
+        <!-- カード表示 -->
+        <div v-else class="card-grid">
+          <div class="card-section__title">
+            メインデッキ ({{ selectedVersion.main.reduce((a, c) => a + c.quantity, 0) }})
+          </div>
+          <div class="card-grid__section">
+            <div v-for="entry in selectedVersion.main" :key="entry.card_name + '-main'" class="card-thumb">
+              <img
+                v-if="entry.scryfall_id"
+                :src="cardImageUrl(entry.scryfall_id)"
+                :alt="entry.card_name"
+              />
+              <div v-else class="card-thumb__placeholder">
+                <span class="card-thumb__name">{{ entry.card_name }}</span>
+              </div>
+              <span class="card-thumb__qty">{{ entry.quantity }}</span>
+            </div>
+          </div>
+
+          <div class="card-section__title card-section__title--sb">
+            サイドボード ({{ selectedVersion.sideboard.reduce((a, c) => a + c.quantity, 0) }})
+          </div>
+          <div class="card-grid__section">
+            <div v-for="entry in selectedVersion.sideboard" :key="entry.card_name + '-sb'" class="card-thumb">
+              <img
+                v-if="entry.scryfall_id"
+                :src="cardImageUrl(entry.scryfall_id)"
+                :alt="entry.card_name"
+              />
+              <div v-else class="card-thumb__placeholder">
+                <span class="card-thumb__name">{{ entry.card_name }}</span>
+              </div>
+              <span class="card-thumb__qty">{{ entry.quantity }}</span>
+            </div>
           </div>
         </div>
       </template>
@@ -285,6 +328,9 @@ const versionError = ref('')
 const confirmVisible = ref(false)
 const confirmMessage = ref('')
 const pendingAction = ref<(() => Promise<void>) | null>(null)
+
+// View mode
+const viewMode = ref<'list' | 'card'>('list')
 
 // Bulk apply modal
 const bulkModal = reactive({
@@ -728,6 +774,95 @@ async function applyBulk() {
 .card-entry__name {
   font-size: 13px;
   color: #2c2416;
+}
+
+/* 表示切替トグル */
+.view-toggle {
+  display: flex;
+  border: 1px solid #c8b89a;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.view-toggle__btn {
+  padding: 3px 8px;
+  border: none;
+  background: #faf7f0;
+  font-size: 12px;
+  cursor: pointer;
+  color: #7a6a55;
+}
+
+.view-toggle__btn:hover {
+  background: #f0ece0;
+}
+
+.view-toggle__btn--active {
+  background: #4a6fa5;
+  color: #fff;
+}
+
+.view-toggle__btn--active:hover {
+  background: #4a6fa5;
+}
+
+/* カードグリッド */
+.card-grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+}
+
+.card-grid__section {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 6px;
+  padding: 6px 0 12px;
+}
+
+.card-thumb {
+  position: relative;
+  aspect-ratio: 5 / 7;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #e0d8c8;
+}
+
+.card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.card-thumb__placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+}
+
+.card-thumb__name {
+  font-size: 9px;
+  color: #7a6a55;
+  text-align: center;
+  word-break: break-word;
+  line-height: 1.3;
+}
+
+.card-thumb__qty {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 12px;
+  font-weight: bold;
+  padding: 1px 5px;
+  border-radius: 3px;
+  line-height: 1.4;
 }
 
 /* モーダル */
