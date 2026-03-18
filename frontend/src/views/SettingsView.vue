@@ -3,6 +3,14 @@
     <h1 class="settings__title">設定</h1>
 
     <div class="settings__section">
+      <div class="settings__section-title">アプリケーション</div>
+      <div class="settings__row">
+        <button class="settings__btn settings__btn--primary" @click="reload">再読み込み</button>
+      </div>
+      <p class="settings__note">画面の表示がおかしい場合や設定を反映させたい場合にご利用ください。</p>
+    </div>
+
+    <div class="settings__section">
       <div class="settings__section-title">デフォルトプレイヤー</div>
       <div class="settings__row">
         <select v-model="defaultPlayerInput" class="settings__select">
@@ -54,14 +62,6 @@
         入力したキーはローカルの SQLite データベースに保存されます。
       </p>
     </div>
-    <div class="settings__section">
-      <div class="settings__section-title">アプリケーション</div>
-      <div class="settings__row">
-        <button class="settings__btn settings__btn--primary" @click="reload">再読み込み</button>
-      </div>
-      <p class="settings__note">画面の表示がおかしい場合や設定を反映させたい場合にご利用ください。</p>
-    </div>
-
     <div v-if="appVersion" class="settings__version">v{{ appVersion }}</div>
   </div>
 </template>
