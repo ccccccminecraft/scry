@@ -23,6 +23,8 @@
 | GET | `/api/stats/opponents` | 対戦相手一覧取得 |
 | GET | `/api/stats/players` | プレイヤー一覧取得（統計画面ドロップダウン用） |
 | PATCH | `/api/matches/{match_id}/players/{player_name}` | デッキ名・ゲームプラン更新 |
+| PUT | `/api/matches/{match_id}/players/{player_name}/deck-version` | 使用デッキバージョン設定 |
+| DELETE | `/api/matches/{match_id}/players/{player_name}/deck-version` | 使用デッキバージョン解除 |
 | POST | `/api/analysis/chat` | AI チャット（SSE ストリーミング）・セッション自動保存 |
 | GET | `/api/analysis/sessions` | チャットセッション一覧取得 |
 | GET | `/api/analysis/sessions/{id}` | チャットセッション詳細取得（メッセージ含む） |
@@ -484,6 +486,43 @@ OS キーストアから API キーを削除する。
 
 - `match_players.player_name` の DISTINCT 一覧をアルファベット順で返す
 - 1件もない場合は空配列を返す
+
+---
+
+### PUT /api/matches/{match_id}/players/{player_name}/deck-version
+
+対戦プレイヤーに使用デッキバージョンを紐づける。すでに設定済みの場合は上書きする。
+
+**リクエスト**
+
+```json
+{ "deck_version_id": 3 }
+```
+
+**レスポンス**
+
+```json
+{ "status": "updated" }
+```
+
+**エラー**
+
+| 状況 | コード | 説明 |
+|------|--------|------|
+| match_id または player_name が存在しない | 404 | - |
+| deck_version_id が存在しない | 404 | - |
+
+---
+
+### DELETE /api/matches/{match_id}/players/{player_name}/deck-version
+
+対戦プレイヤーのデッキバージョン紐づけを解除する（`deck_version_id` を NULL に設定）。
+
+**レスポンス**
+
+```json
+{ "status": "updated" }
+```
 
 ---
 
