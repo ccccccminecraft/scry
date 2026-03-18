@@ -534,15 +534,16 @@ async function save() {
   }
 }
 
-async function remove(d: DeckDefinition) {
-  if (!confirm(`「${d.deck_name}」を削除しますか？`)) return
-  try {
-    await deleteDeckDefinition(d.id)
-    definitions.value = definitions.value.filter(x => x.id !== d.id)
-    showSuccess('削除しました')
-  } catch {
-    showError('削除に失敗しました')
-  }
+function remove(d: DeckDefinition) {
+  showConfirm(`「${d.deck_name}」を削除しますか？`, '削除', async () => {
+    try {
+      await deleteDeckDefinition(d.id)
+      definitions.value = definitions.value.filter(x => x.id !== d.id)
+      showSuccess('削除しました')
+    } catch {
+      showError('削除に失敗しました')
+    }
+  })
 }
 
 async function runBulk() {
