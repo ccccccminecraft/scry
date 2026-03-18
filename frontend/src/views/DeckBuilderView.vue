@@ -55,7 +55,7 @@
           <span class="pane__title">{{ selectedDeck.name }}</span>
           <div class="pane__header-actions">
             <button class="pane__btn" @click="openEditDeck">編集</button>
-            <button class="pane__btn pane__btn--danger" @click="archiveSelectedDeck">アーカイブ</button>
+            <button class="pane__btn pane__btn--danger" @click="confirmArchiveDeck">アーカイブ</button>
             <button class="pane__btn" @click="openNewVersion">+ 追加</button>
           </div>
         </div>
@@ -103,7 +103,7 @@
           <span class="pane__title">v{{ selectedVersion.version_number }} {{ selectedVersion.memo ?? '' }}</span>
           <div class="pane__header-actions">
             <button class="pane__btn" @click="openBulkApply">一括適用</button>
-            <button class="pane__btn pane__btn--danger" @click="archiveSelectedVersion">アーカイブ</button>
+            <button class="pane__btn pane__btn--danger" @click="confirmArchiveVersion">アーカイブ</button>
             <div class="view-toggle">
               <button class="view-toggle__btn" :class="{ 'view-toggle__btn--active': viewMode === 'list' }" @click="viewMode = 'list'">リスト</button>
               <button class="view-toggle__btn" :class="{ 'view-toggle__btn--active': viewMode === 'card' }" @click="viewMode = 'card'">カード</button>
@@ -296,7 +296,7 @@
     <ConfirmDialog
       :visible="confirmVisible"
       :message="confirmMessage"
-      confirm-label="削除"
+      :confirm-label="confirmLabel"
       @confirm="onConfirm"
       @cancel="confirmVisible = false"
     />
@@ -376,6 +376,7 @@ const versionError = ref('')
 // Confirm dialog
 const confirmVisible = ref(false)
 const confirmMessage = ref('')
+const confirmLabel = ref('削除')
 const pendingAction = ref<(() => Promise<void>) | null>(null)
 
 // View mode
@@ -483,10 +484,12 @@ async function saveDeck() {
   }
 }
 
-async function archiveSelectedDeck() {
+function confirmArchiveDeck() {
   if (!selectedDeck.value) return
-  try {
-    await archiveDeck(selectedDeck.value.id)
+  confirmMessage.value = `「${selectedDeck.value.name}」をアーカイブしますか？アーカイブ済み一覧から復元できます。`
+  confirmLabel.value = 'アーカイブ'
+  pendingAction.value = async () => {
+    await archiveDeck(selectedDeck.value!.id)
     decks.value = decks.value.filter(d => d.id !== selectedDeck.value!.id)
     if (showArchived.value) {
       archivedDecks.value = await fetchDecks(true)
@@ -495,9 +498,8 @@ async function archiveSelectedDeck() {
     versions.value = []
     selectedVersion.value = null
     showSuccess('デッキをアーカイブしました')
-  } catch {
-    showError('アーカイブに失敗しました')
   }
+  confirmVisible.value = true
 }
 
 async function restoreDeck(deck: Deck) {
@@ -513,6 +515,7 @@ async function restoreDeck(deck: Deck) {
 
 function confirmPermanentDeleteDeck(deck: Deck) {
   confirmMessage.value = `「${deck.name}」を完全に削除しますか？この操作は取り消せません。`
+  confirmLabel.value = '完全削除'
   pendingAction.value = async () => {
     await deleteDeck(deck.id)
     archivedDecks.value = archivedDecks.value.filter(d => d.id !== deck.id)
@@ -566,17 +569,18 @@ async function saveVersion() {
   }
 }
 
-async function archiveSelectedVersion() {
+function confirmArchiveVersion() {
   if (!selectedVersion.value || !selectedDeck.value) return
-  try {
-    const updated = await archiveVersion(selectedDeck.value.id, selectedVersion.value.id)
+  confirmMessage.value = `v${selectedVersion.value.version_number} をアーカイブしますか？アーカイブ済み一覧から復元できます。`
+  confirmLabel.value = 'アーカイブ'
+  pendingAction.value = async () => {
+    const updated = await archiveVersion(selectedDeck.value!.id, selectedVersion.value!.id)
     versions.value = versions.value.map(v => v.id === updated.id ? updated : v)
     selectedVersion.value = null
     await loadDecks()
     showSuccess('バージョンをアーカイブしました')
-  } catch {
-    showError('アーカイブに失敗しました')
   }
+  confirmVisible.value = true
 }
 
 async function restoreVersion(v: DeckVersionSummary) {
@@ -594,6 +598,7 @@ async function restoreVersion(v: DeckVersionSummary) {
 function confirmPermanentDeleteVersion(v: DeckVersionSummary) {
   if (!selectedDeck.value) return
   confirmMessage.value = `v${v.version_number} を完全に削除しますか？この操作は取り消せません。`
+  confirmLabel.value = '完全削除'
   pendingAction.value = async () => {
     await deleteVersion(selectedDeck.value!.id, v.id)
     versions.value = versions.value.filter(ver => ver.id !== v.id)
