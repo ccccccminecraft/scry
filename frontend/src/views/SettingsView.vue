@@ -76,11 +76,46 @@
       <p class="settings__note">リストアを実行すると現在のデータが置き換えられます。リストア前に自動バックアップが作成されます。</p>
     </div>
 
+    <div class="settings__section">
+      <div class="settings__section-title">データ削除</div>
+      <div class="settings__row">
+        <button class="settings__btn settings__btn--danger" @click="handleDeleteAllMatches">全試合データを削除</button>
+      </div>
+      <div class="settings__row">
+        <label class="settings__inline-label">開始日</label>
+        <input v-model="deleteFrom" type="date" class="settings__date-input" />
+        <label class="settings__inline-label" style="width: auto; margin-left: 4px;">終了日</label>
+        <input v-model="deleteTo" type="date" class="settings__date-input" />
+        <button class="settings__btn settings__btn--danger" :disabled="!deleteFrom && !deleteTo" @click="handleDeleteRange">期間指定で削除</button>
+      </div>
+      <div class="settings__divider" />
+      <div class="settings__row">
+        <button class="settings__btn settings__btn--danger" @click="resetDialogVisible = true">完全リセット</button>
+      </div>
+      <p class="settings__note">完全リセットはすべてのデータ（試合・設定・デッキ定義）を削除します。</p>
+    </div>
+
     <ConfirmDialog
       :visible="confirmVisible"
+      :message="confirmMessage"
+      confirm-label="削除"
+      @confirm="onConfirmAction"
+      @cancel="confirmVisible = false"
+    />
+
+    <ConfirmDialog
+      :visible="restoreConfirmVisible"
       message="データベースをリストアしますか？現在のデータはすべて置き換えられます。"
       @confirm="onConfirmRestore"
-      @cancel="confirmVisible = false"
+      @cancel="restoreConfirmVisible = false"
+    />
+
+    <TypeToConfirmDialog
+      :visible="resetDialogVisible"
+      message="すべてのデータ（試合・設定・デッキ定義）が完全に削除されます。この操作は取り消せません。"
+      confirm-text="削除する"
+      @confirm="onConfirmReset"
+      @cancel="resetDialogVisible = false"
     />
 
     <div v-if="appVersion" class="settings__version">v{{ appVersion }}</div>
@@ -94,14 +129,22 @@ import { useToast } from '../composables/useToast'
 import { fetchSettings, updateSettings, deleteApiKey } from '../api/settings'
 import { fetchPlayers } from '../api/stats'
 import { downloadBackup, restoreBackup } from '../api/backup'
+import { deleteAllMatches, deleteMatchesByRange, resetDatabase } from '../api/deletion'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import TypeToConfirmDialog from '../components/TypeToConfirmDialog.vue'
 
 const { showSuccess, showError } = useToast()
 
 const configured = ref(false)
 const restoreFileInput = ref<HTMLInputElement | null>(null)
 const restoreFile = ref<File | null>(null)
+const restoreConfirmVisible = ref(false)
 const confirmVisible = ref(false)
+const confirmMessage = ref('')
+const pendingAction = ref<(() => Promise<void>) | null>(null)
+const deleteFrom = ref('')
+const deleteTo = ref('')
+const resetDialogVisible = ref(false)
 const apiKeyInput = ref('')
 const playerList = ref<string[]>([])
 const defaultPlayerInput = ref('')
@@ -179,11 +222,11 @@ function onRestoreFileChange(e: Event) {
 
 function handleRestore() {
   if (!restoreFile.value) return
-  confirmVisible.value = true
+  restoreConfirmVisible.value = true
 }
 
 async function onConfirmRestore() {
-  confirmVisible.value = false
+  restoreConfirmVisible.value = false
   if (!restoreFile.value) return
   try {
     await restoreBackup(restoreFile.value)
@@ -191,6 +234,55 @@ async function onConfirmRestore() {
     setTimeout(() => window.location.reload(), 1000)
   } catch {
     showError('リストアに失敗しました')
+  }
+}
+
+function handleDeleteAllMatches() {
+  confirmMessage.value = '全試合データを削除しますか？設定・デッキ定義は保持されます。'
+  pendingAction.value = async () => {
+    const count = await deleteAllMatches()
+    if (count === 0) {
+      showSuccess('削除対象のデータがありませんでした')
+    } else {
+      showSuccess(`${count} 件の試合を削除しました`)
+    }
+  }
+  confirmVisible.value = true
+}
+
+function handleDeleteRange() {
+  confirmMessage.value = `期間を指定して試合を削除しますか？`
+  pendingAction.value = async () => {
+    const count = await deleteMatchesByRange(deleteFrom.value || undefined, deleteTo.value || undefined)
+    if (count === 0) {
+      showSuccess('削除対象のデータがありませんでした')
+    } else {
+      showSuccess(`${count} 件の試合を削除しました`)
+    }
+  }
+  confirmVisible.value = true
+}
+
+async function onConfirmAction() {
+  confirmVisible.value = false
+  if (!pendingAction.value) return
+  try {
+    await pendingAction.value()
+  } catch {
+    showError('削除に失敗しました')
+  } finally {
+    pendingAction.value = null
+  }
+}
+
+async function onConfirmReset() {
+  resetDialogVisible.value = false
+  try {
+    await resetDatabase()
+    showSuccess('完全リセットが完了しました。再読み込みします...')
+    setTimeout(() => window.location.reload(), 1000)
+  } catch {
+    showError('リセットに失敗しました')
   }
 }
 
@@ -348,5 +440,20 @@ async function removeApiKey() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.settings__date-input {
+  padding: 6px 10px;
+  border: 1px solid #c8b89a;
+  border-radius: 4px;
+  font-size: 13px;
+  background: #fff;
+  color: #2c2416;
+  font-family: inherit;
+}
+
+.settings__divider {
+  border-top: 1px solid #e0d8c8;
+  margin: 8px 0;
 }
 </style>
