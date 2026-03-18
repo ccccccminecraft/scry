@@ -32,8 +32,10 @@ export interface DeckVersionDetail extends DeckVersionSummary {
   sideboard: CardEntry[]
 }
 
-export async function fetchDecks(archived = false): Promise<Deck[]> {
-  const res = await axios.get(`${BASE}/decklist/decks`, { params: { archived } })
+export async function fetchDecks(archived = false, format?: string): Promise<Deck[]> {
+  const res = await axios.get(`${BASE}/decklist/decks`, {
+    params: { archived, ...(format ? { format } : {}) },
+  })
   return res.data
 }
 

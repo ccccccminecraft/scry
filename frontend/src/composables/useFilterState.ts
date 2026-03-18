@@ -60,7 +60,7 @@ async function _loadAllLists() {
   try {
     const [opps, decks, deckNames, oppDecks] = await Promise.all([
       fetchOpponents(player.value),
-      fetchDecks(),
+      fetchDecks(false, format.value || undefined),
       fetchPlayerDecks(player.value, format.value || undefined, minDeckMatches.value),
       fetchOpponentDecks(player.value, opponent.value || undefined, format.value || undefined, minDeckMatches.value),
     ])
@@ -84,7 +84,7 @@ async function _loadDeckAndOpponentDeckList() {
   if (!player.value) { deckList.value = []; deckNameList.value = []; opponentDeckList.value = []; return }
   try {
     const [decks, deckNames, oppDecks] = await Promise.all([
-      fetchDecks(),
+      fetchDecks(false, format.value || undefined),
       fetchPlayerDecks(player.value, format.value || undefined, minDeckMatches.value),
       fetchOpponentDecks(player.value, opponent.value || undefined, format.value || undefined, minDeckMatches.value),
     ])

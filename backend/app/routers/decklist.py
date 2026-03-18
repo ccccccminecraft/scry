@@ -196,13 +196,15 @@ def _deck_to_dict(deck: Deck) -> dict:
 
 
 @router.get("/decklist/decks")
-def list_decks(archived: bool = Query(default=False), db: Session = Depends(get_db)):
-    decks = (
-        db.query(Deck)
-        .filter(Deck.is_archived == archived)
-        .order_by(Deck.created_at.desc())
-        .all()
-    )
+def list_decks(
+    archived: bool = Query(default=False),
+    format: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    q = db.query(Deck).filter(Deck.is_archived == archived)
+    if format:
+        q = q.filter(Deck.format == format)
+    decks = q.order_by(Deck.created_at.desc()).all()
     return [_deck_to_dict(d) for d in decks]
 
 
