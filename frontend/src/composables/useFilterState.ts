@@ -8,7 +8,7 @@ import { fetchSettings } from '../api/settings'
 // ── module-level shared state (全ビューで共有) ────────────────────────────────
 const player = ref('')
 const opponent = ref('')
-const useDeckManager = ref(false)
+const useDeckManager = ref(true)
 const deckId = ref<number | null>(null)   // デッキ管理モード用
 const deck = ref('')                       // デッキ定義モード用
 const opponentDeck = ref('')
