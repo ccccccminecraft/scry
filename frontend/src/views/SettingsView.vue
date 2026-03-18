@@ -23,8 +23,6 @@
       <div class="settings__row">
         <label class="settings__inline-label">デッキ</label>
         <input v-model.number="minDeckMatchesInput" type="number" min="0" class="settings__number-input" />
-      </div>
-      <div class="settings__row">
         <button class="settings__btn settings__btn--primary" @click="saveMinMatches">保存</button>
       </div>
       <p class="settings__note">プルダウンの候補に表示するプレイヤーおよびデッキの最低試合数を設定します。0 で全件表示します。</p>
