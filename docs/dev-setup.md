@@ -1,11 +1,11 @@
-# 開発環境セットアップ・動作確認
+# 開発環境セットアップ
 
 ## 前提環境
 
 | 項目 | 要件 |
 |------|------|
-| OS | Windows 11（WSLg 標準搭載） |
-| WSL2 ディストリビューション | Ubuntu 22.04 推奨 |
+| OS | Windows 11（WSL2 + WSLg） |
+| WSL2 ディストリビューション | Ubuntu 22.04 / 24.04 |
 | Docker Desktop | WSL2 バックエンドで動作していること |
 | Node.js | WSL2 内に 20+ インストール済み |
 
@@ -13,61 +13,54 @@
 
 ## 初回セットアップ（一度だけ実行）
 
-### 1. Electron 用 Linux システムライブラリのインストール
-
-WSL2 内で以下を実行する。
+### 1. Electron 用 Linux システムライブラリ
 
 ```bash
 sudo apt update
 sudo apt install -y libnspr4 libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 \
   libcups2t64 libdrm2 libxkbcommon0 libxcomposite1 \
-  libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64 \
-  libgtk-3-0t64
+  libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64 libgtk-3-0t64
 ```
 
-> Ubuntu 24.04 では一部パッケージ名に `t64` サフィックスが付く。`apt` が `t64` 版を自動選択する場合はそちらを使用する。
+> Ubuntu 24.04 では一部パッケージ名に `t64` サフィックスが付く。
 
-### 2. 日本語フォントのインストール
+### 2. 日本語フォント
 
 ```bash
 sudo apt install -y fonts-noto-cjk
 ```
 
-### 3. フロントエンドの依存パッケージインストール
+### 3. フロントエンドの依存パッケージ
 
 ```bash
 cd /path/to/scry/frontend
 npm install
 ```
 
-### 4. バックエンドの依存パッケージインストール
-
-```bash
-cd /path/to/scry/backend
-pip install -r requirements.txt
-```
+> `node_modules` はホストの `frontend/` に置くが、Docker コンテナ内では `/app/node_modules` として volume マウント除外されている。
+> コンテナ内で追加パッケージが必要な場合は `docker compose exec frontend npm install <pkg>` を使う。
 
 ---
 
 ## 開発サーバーの起動
 
-### ステップ 1: Docker で Vite dev server + FastAPI を起動
+### ステップ 1: Docker で Vite + FastAPI を起動
 
 ```bash
 cd /path/to/scry
 docker compose up
 ```
 
-起動確認：
+| サービス | URL |
+|---------|-----|
+| Vite dev server | http://localhost:5173 |
+| FastAPI | http://localhost:18432 |
 
-| サービス | URL | 確認方法 |
-|---------|-----|---------|
-| Vite dev server | http://localhost:5173 | ブラウザでアクセス可能 |
-| FastAPI | http://localhost:8000 | 次のコマンドで確認 |
+接続確認:
 
 ```bash
-curl http://localhost:8000/api/health
-# → {"status":"ok","version":"0.1.0"} が返れば OK
+curl http://localhost:18432/api/health
+# → {"status":"ok","version":"0.1.0"}
 ```
 
 ### ステップ 2: 別ターミナルで Electron を起動
@@ -81,18 +74,26 @@ npm run dev:electron
 
 ---
 
-## 動作確認チェックリスト
+## 停止
 
-### 開発環境
+```bash
+docker compose down   # Docker サービス停止
+# Electron はウィンドウを閉じるか Ctrl+C
+```
 
-- [ ] `docker compose up` → frontend（:5173）と backend（:8000）が起動する
-- [ ] `curl http://localhost:8000/api/health` → `{"status":"ok","version":"0.1.0"}` が返る
-- [ ] `npm run dev:electron` → Electron ウィンドウ（1200×800）が起動する
-- [ ] ホーム画面に「✅ Backend connected」が表示される
-- [ ] ホーム画面に「✅ Backend connected」が緑色で表示される
-- [ ] FastAPI を停止した状態で `npm run dev:electron` を起動すると「❌ Backend not connected」が赤色で表示される
+---
 
-### TypeScript コンパイル確認
+## ホットリロード
+
+| 変更箇所 | 反映方法 |
+|---------|---------|
+| `src/` 以下（Vue コンポーネント等） | Vite HMR で自動反映 |
+| `electron/main.ts` / `electron/preload.ts` | `npx tsc -p tsconfig.electron.json` 後、Electron 再起動 |
+| `backend/` 以下（Python） | uvicorn `--reload` で自動反映 |
+
+---
+
+## TypeScript 型チェック
 
 ```bash
 cd /path/to/scry/frontend
@@ -100,31 +101,10 @@ cd /path/to/scry/frontend
 # Vue / src の型チェック
 npx vue-tsc --noEmit
 
-# electron/ の型チェック＆コンパイル
+# electron/ の型チェック & コンパイル
 npx tsc -p tsconfig.electron.json
 # → dist-electron/main.js, dist-electron/preload.js が生成される
 ```
-
----
-
-## 開発サーバーの停止
-
-```bash
-# Docker サービスの停止
-docker compose down
-
-# Electron はウィンドウを閉じるか Ctrl+C で停止
-```
-
----
-
-## ホットリロードの挙動
-
-| 変更箇所 | 反映方法 |
-|---------|---------|
-| `src/` 以下（Vue コンポーネント等） | Vite の HMR により自動反映 |
-| `electron/main.ts` / `electron/preload.ts` | `tsc -p tsconfig.electron.json` 後、Electron を再起動 |
-| `backend/` 以下（Python） | uvicorn の `--reload` により自動反映 |
 
 ---
 
@@ -132,35 +112,31 @@ docker compose down
 
 ### Electron ウィンドウが開かない
 
-WSLg が有効になっているか確認する。
+WSLg が有効か確認する。
 
 ```bash
-# WSLg が有効であれば DISPLAY 環境変数が設定されている
-echo $DISPLAY
-# → :0 などが表示されれば OK
+echo $DISPLAY   # → ":0" 等が表示されれば OK
 ```
 
 ### 「Backend not connected」が表示される
 
 ```bash
-# Docker コンテナが起動しているか確認
 docker compose ps
-
-# バックエンドのログを確認
 docker compose logs backend
 ```
 
-### `npm run dev:electron` が Electron を起動しない
+### `npm run dev:electron` が起動しない
 
-`wait-on` が http://localhost:5173 を待機中の場合、Docker の frontend コンテナが起動していない可能性がある。
+`wait-on` が http://localhost:5173 を待機中の場合、frontend コンテナが未起動の可能性がある。
 
 ```bash
 docker compose logs frontend
 ```
 
-### Electron の依存ライブラリが不足している場合
+### Electron の依存ライブラリが不足
+
+エラーメッセージのライブラリ名を確認して追加インストール。
 
 ```bash
-# エラーメッセージに含まれるライブラリ名を確認して追加インストール
 sudo apt install -y <ライブラリ名>
 ```

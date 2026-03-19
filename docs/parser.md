@@ -1,434 +1,193 @@
 # パーサー設計
 
-## 概要
+## MTGO パーサー（`backend/parser/mtgo_parser.py`）
 
-Magic Online（MTGO）の対戦ログファイル（`.dat`）を解析し、構造化データとして返すモジュール。
+### .dat ファイル形式
 
----
+- バイナリ形式（メッセージ本文は UTF-8）
+- 1ファイル = 1マッチ（複数ゲームを含む）
 
-## .dat ファイル仕様
-
-### ファイル形式
-
-- **エンコーディング**: バイナリ形式（メッセージ本文は UTF-8）
-- **構造**: 固定ヘッダー + イベントレコードの連続
-- **1ファイル = 1マッチ分**（複数ゲームを含む）
-
----
-
-### ファイル構造
-
-#### ヘッダー
+**ヘッダー構造**
 
 ```
-[01 00]                     # 固定マジックバイト
-[24]                        # マッチID長 (= 0x24 = 36)
-[match_id: 36 bytes UTF-8]  # 例: "01564d49-9b3b-4bd4-a879-09bc7a91e602"
-[04 00]                     # 固定区切り
+[01 00]                     # マジックバイト
 [24]                        # マッチID長 (= 36)
-[match_id: 36 bytes UTF-8]  # 同じマッチIDが繰り返される
-[2 bytes]                   # 未使用パディング
+[match_id: 36 bytes UTF-8]  # UUID 例: "01564d49-9b3b-4bd4-a879-09bc7a91e602"
+[04 00][24]
+[match_id: 36 bytes UTF-8]  # 同じIDが繰り返し
+[2 bytes]                   # パディング
 ```
 
-#### イベントレコード（繰り返し）
+**イベントレコード（繰り返し）**
 
 ```
-[8 bytes]   タイムスタンプ（Windows FILETIME、リトルエンディアン）
-[1 byte]    0x00（固定）
-[1 byte]    メッセージ長（@P プレフィックス含む）
-[2 bytes]   0x40 0x50（= "@P" プレフィックス、固定）
-[N bytes]   メッセージ本文（UTF-8）
+[8 bytes]  タイムスタンプ（Windows FILETIME、リトルエンディアン 64bit）
+[1 byte]   0x00（固定）
+[1 byte]   メッセージ長
+[2 bytes]  0x40 0x50（= "@P" プレフィックス）
+[N bytes]  メッセージ本文（UTF-8）
 ```
 
-#### タイムスタンプ
-
-- 8バイト、リトルエンディアン 64bit 整数
-- Windows FILETIME 形式（1601-01-01 からの 100ナノ秒単位）
-- `datetime` への変換: `(value - 116444736000000000) / 10_000_000` → Unix timestamp
+タイムスタンプ変換: `(value - 621_355_968_000_000_000) / 10_000_000` → Unix timestamp
 
 ---
 
-### メッセージフォーマット
-
-各イベントはプレイヤー名で始まるテキスト行。
-
-#### カード参照
-
-カード名は以下の形式で埋め込まれる：
+### カード参照形式
 
 ```
 @[CardName@:multiverseId,permanentId:@]
 
 例: @[Slickshot Show-Off@:248406,428:@]
-    CardName       = "Slickshot Show-Off"
-    multiverseId   = 248406  （Scryfall等のカードID）
-    permanentId    = 428     （ゲーム内のオブジェクトID）
 ```
+
+- `CardName` をカード名として使用
+- `multiverseId` は MTGO 内部 ID（Scryfall multiverse ID とは異なる）
+- フォーマット判定時は Scryfall `/cards/named?exact=<CardName>` でカード名引き
+- `permanentId`（ゲーム内オブジェクトID）は使用しない
 
 ---
 
-### イベント種別一覧
-
-#### マッチ・ゲーム制御
-
-| メッセージパターン | 意味 |
-|-------------------|------|
-| `{player} rolled a {n}.` | ダイスロール（先手決め） |
-| `{player} joined the game.` | ゲーム開始（ゲームの区切りとして使用） |
-| `{player} chooses to play first.` | 先手選択 |
-| `{player} begins the game with {n} cards in hand.` | ゲーム開始時の手札枚数 |
-| `{player} wins the game.` | ゲーム勝利 |
-| `{player} loses the game.` | ゲーム敗北（コンシード等）。勝者 = もう一方のプレイヤー |
-| `{player} leads the match {W}-{L}` | ゲーム間スコア表示（ゲーム境界の検出に使用可） |
-| `{player} wins the match {W}-{L}` | マッチ勝利 |
-| `Match Tied {N}-{N}` | タイ（2本先取制での1-1） |
-
-#### マリガン
-
-| メッセージパターン | 意味 |
-|-------------------|------|
-| `{player} mulligans to {n} cards.` | マリガン宣言 |
-| `{player} puts {n} cards on the bottom of their library and begins the game with {n} cards in hand.` | マリガン後の手札確定 |
-
-#### ターン進行
-
-| メッセージパターン | 意味 |
-|-------------------|------|
-| `Turn {n}: {player}` | ターン開始 |
-| `{player} skips their draw step.` | ドローステップスキップ（先手1ターン目） |
-
-#### アクション
+### メッセージパターン → action_type マッピング
 
 | メッセージパターン | action_type |
 |-------------------|-------------|
-| `{player} plays @[{card}...]` | `play`（土地プレイ） |
-| `{player} casts @[{card}...]` | `cast`（呪文唱える） |
+| `{player} plays @[{card}...]` | `play` |
+| `{player} casts @[{card}...]` | `cast` |
 | `{player} activates an ability of @[{card}...]` | `activate` |
 | `{player} puts triggered ability from @[{card}...]` | `trigger` |
-| `{player} is being attacked by @[{card}...]` | `attack` |
-| `{player} draws a card` / `{player} draws {n} cards` | `draw` |
+| `{player} is being attacked by @[{card}...]` | `attack`（注: group(1) が防御側、attacker = active_player） |
+| `{player} draws a card` / `draws {n} cards` | `draw` |
 | `{player} discards @[{card}...]` | `discard` |
 | `{player} reveals @[{card}...]` | `reveal` |
-| `{player} removes ... counter` | `remove_counter` |
 | `{player} puts ... counter on` | `add_counter` |
+| `{player} removes ... counter` | `remove_counter` |
+| `{player} mulligans to {n} cards.` | `mulligan` |
+
+**スキップ（アクションとして記録しない）**
+
+`joined the game.` / `wins the game.` / `loses the game.` / `Turn N:` / `wins the match` / `leads the match` / 先手選択・ダイスロール等
 
 ---
 
-### ゲーム境界の検出
+### ゲーム境界検出
 
-同一マッチ内のゲーム（Game 1, 2, 3）は以下のパターンで区切られる：
+同一マッチ内のゲームは `joined the game.` を区切りとして分割。
 
 ```
 [ゲームN 終了]
-  {player} wins the game.          ← ゲーム終了（通常勝利）
-  または
-  {player} loses the game.         ← ゲーム終了（コンシード等）
-                                     ※ 勝者 = もう一方のプレイヤー
-
-  {player} leads the match {W}-{L} ← 中間スコア表示（必ず存在）
-  （稀に残余イベントが入る場合あり、例: "{player} draws their next card."）
+  {player} wins/loses the game.
+  {player} leads the match {W}-{L}
 
 [ゲームN+1 開始]
-  {player} joined the game.        ← 新ゲームの開始マーカー（1行目）
-  {player} joined the game.        ← 2行目（両プレイヤー）
+  {player} joined the game.  （2行）
   {player} chooses to play first.
-  {player} begins the game with ...
 ```
 
-マッチ終了は以下で検出：
-- `{player} wins the match {W}-{L}`
-- `Match Tied {N}-{N}`（2本先取での 1-1 タイ）
-
-### サイドボードについて
-
-**サイドボードのイベントはログに記録されない**（MTGOの仕様）。
-
-ゲーム2以降でデッキ構成が変わる可能性はあるが、ログ上では「joined the game.」から次ゲームが始まるだけで、サイドボード操作の記録は存在しない。パーサーでの特別な処理は不要。
+マッチ終了: `wins the match {W}-{L}` / `Match Tied {N}-{N}`
 
 ---
 
-## クラス設計
+### プレイヤー名処理
 
-### `MTGOLogParser`
+メッセージ先頭の `@P` プレフィックスを再帰的に除去する。
 
 ```python
-class MTGOLogParser:
-    def parse_file(self, filepath: str) -> dict:
-        """
-        .dat ファイルを読み込み、構造化データを返す
-
-        Parameters
-        ----------
-        filepath : str
-            .dat ファイルのパス
-
-        Returns
-        -------
-        dict
-            下記「出力データ構造」参照
-
-        Raises
-        ------
-        FileNotFoundError
-            ファイルが存在しない場合
-        ParseError
-            ファイルフォーマットが不正な場合
-        """
-        pass
-
-    def _read_events(self, data: bytes) -> list[dict]:
-        """バイナリデータからイベントレコード列を抽出する"""
-        pass
-
-    def _parse_match_header(self, data: bytes) -> str:
-        """ヘッダーからマッチIDを抽出する"""
-        pass
-
-    def _split_games(self, events: list[dict]) -> list[list[dict]]:
-        """イベント列を joined the game. を区切りとしてゲームごとに分割する"""
-        pass
-
-    def _parse_game(self, events: list[dict], game_number: int) -> dict:
-        """1ゲーム分のイベント列をパースする"""
-        pass
-
-    def _parse_action(self, message: str, turn: int) -> dict:
-        """1メッセージをアクション dict に変換する"""
-        pass
-
-    def _extract_card_name(self, message: str) -> str:
-        """メッセージ中の @[CardName@:...:@] からカード名を抽出する"""
-        pass
+while message.startswith('@P'):
+    message = message[2:]
 ```
 
 ---
 
-## 出力データ構造
+### フォーマット判定（ImportService）
 
-```python
+```
+1. 全ゲームの play / cast アクションからカード名を収集
+2. card_legality テーブルで未キャッシュのカードを特定
+3. 未キャッシュ分を Scryfall /cards/named?exact= で取得（100ms 間隔）
+4. 全カードが legal なフォーマットのうち最も制限の厳しいものを採用
+   優先順位: standard > pioneer > modern > pauper > legacy > vintage
+5. 判定不能（カードなし / 全スキップ）→ "unknown"
+```
+
+`banned` カードは `legal` 扱い（プレイ時点では合法だった可能性）。
+
+---
+
+## Surveil パーサー（`backend/parser/surveil_parser.py`）
+
+[surveil](../../surveil/) が出力する `schema_version: 2` の JSON を解析する。
+
+### 入力 JSON 構造
+
+```json
 {
-    "match_id": str,          # マッチID（UUID形式）
-    "players": [str, str],    # [プレイヤーA, プレイヤーB]
-    "match_winner": str,      # マッチの勝者プレイヤー名
-    "games": [
-        {
-            "game_number": int,      # ゲーム番号（1始まり）
-            "winner": str,           # ゲーム勝者
-            "turns": int,            # 総ターン数
-            "first_player": str,     # 先手プレイヤー名
-            "mulligans": {
-                "<player>": int      # プレイヤーごとのマリガン回数
-            },
-            "actions": [
-                {
-                    "turn": int,             # ターン番号
-                    "player": str,           # アクション実行プレイヤー
-                    "action_type": str,      # アクション種別（下記一覧参照）
-                    "card_name": str,        # カード名（なければ空文字）
-                    "multiverse_id": int     # Scryfall multiverse ID（なければ None）
-                }
-            ]
-        }
-    ]
+  "schema_version": 2,
+  "self_player": "PlayerName",
+  "opponent_player": "OpponentName",
+  "deck": {
+    "main": [{"name": "Lightning Bolt", "quantity": 4}, ...],
+    "sideboard": [...]
+  },
+  "games": [
+    {
+      "game_number": 1,
+      "winner": "PlayerName",
+      "events": [...]
+    }
+  ]
 }
 ```
 
----
+### イベント → action_type マッピング
 
-## パース処理フロー
+| Surveil イベント | action_type | 備考 |
+|----------------|-------------|------|
+| `cast` | `cast` | |
+| `play_land` | `play` | |
+| `draw` | `draw` | |
+| `discard` | `discard` | |
+| `mulligan` | `mulligan` | |
+| `attack` | `attack` | |
+| `block` | `block` | |
+| `ability_activated` | `activate` | |
+| `ability_triggered` | `trigger` | |
+| `mill` | `mill` | |
+| `damage` | `damage` | |
+| `ability_mana` | スキップ | マナ能力（記録不要） |
+| `ability_resolved` | スキップ | |
+| `turn_start` | スキップ（active_player 更新のみ） | |
+| `phase_change` | スキップ | |
+| `resolve` | スキップ | |
+| `life_change` | スキップ | |
 
-```
-1. ファイルをバイナリで読み込む
-      │
-      ▼
-2. フォーマット検証（マジックバイト 01 00 で始まるか）
-      │ 不正 → ParseError を raise
-      ▼
-3. ヘッダーからマッチIDを抽出
-      │
-      ▼
-4. イベントレコードを順次読み取る
-   [8byte timestamp][0x00][length][0x40 0x50][message]
-      │
-      ▼
-5. "joined the game." を区切りにゲームブロックへ分割
-      │
-      ▼
-6. 各ゲームブロックをパース
-   ├── "chooses to play first." → first_player
-   ├── "mulligans to N cards."  → mulligans カウント
-   ├── "Turn N: {player}"       → 現在ターン番号を更新
-   ├── アクション行             → _parse_action() で action_type / card_name を抽出
-   ├── "wins the game."         → winner = そのプレイヤー
-   └── "loses the game."        → winner = もう一方のプレイヤー
-      │
-      ▼
-7. "wins the match" / "Match Tied" → match_winner を確定
-      │
-      ▼
-8. 構造化 dict を返す
-```
+`phase` フィールド: Surveil JSON のフェーズ情報を `actions.phase` に記録（MTGO は NULL）。
 
 ---
 
-## インポートサービス（`ImportService`）
+### フォーマット判定（SurveilImportService）
 
-`MTGOLogParser` の出力を受け取り、DB 保存とフォーマット推定を行うサービス層。
+デッキのメインカードから基本土地を除いたカード名リストで Scryfall 検索。
+MTGO パーサーと同じ判定ロジックを使用（`_detect_deck` 共通関数）。
 
-### 処理フロー
+---
 
-```
-1. MTGOLogParser.parse_file() で構造化データを取得
-      │
-      ▼
-2. matches テーブルに重複チェック（match_id が既存か）
-      │ 重複 → status="skipped" を返して終了
-      ▼
-3. matches / match_players / games / mulligans / actions を DB に保存
-      │
-      ▼
-4. フォーマット推定
-   a. 全ゲームの play / cast アクションから multiverse_id を収集
-   b. card_legality テーブルで未キャッシュの multiverse_id を特定
-   c. 未キャッシュ分を Scryfall API で取得し card_legality に保存
-      （100ms インターバルで順次リクエスト）
-   d. 全カードの legalities を集計し format を決定
-      → 全カードが legal なフォーマットのうち最も制限の厳しいものを採用
-      → 判定不能（カードなし / 全スキップ）なら "unknown"
-      │
-      ▼
-5. matches.format を更新
-      │
-      ▼
-6. status="imported", format=<判定結果> を返す
-```
-
-### multiverse_id の取得元と保存方針
-
-`multiverse_id` は `.dat` ファイルのカード参照部分 `@[CardName@:multiverseId,permanentId:@]` から抽出し、`_parse_action()` の出力に含める。
+### 出力データ構造（共通）
 
 ```python
-{
-    "turn": int,
-    "player": str,
-    "action_type": str,
-    "card_name": str,
-    "multiverse_id": int | None   # カード参照がある場合のみ設定、なければ None
-}
+# ImportService / SurveilImportService が DB に保存するデータ
+Match(
+    id=str,           # ログから抽出したマッチID
+    source="mtgo",    # or "mtga"
+    played_at=datetime,
+    match_winner=str,
+    game_count=int,
+    format=str,       # standard / pioneer / modern / ... / unknown
+)
+MatchPlayer(deck_json=str|None)  # MTGA のみデッキ JSON を保存
+Action(
+    active_player=str,   # 手番プレイヤー
+    player_name=str,     # アクション実行プレイヤー
+    phase=str|None,      # MTGA のみ
+    target_name=str|None,
+)
 ```
-
-**`multiverse_id` は DB の `actions` テーブルには保存しない。**
-
-`ImportService` がフォーマット推定のためだけに一時的に使用し（Scryfall API 呼び出し・`card_legality` テーブルへのキャッシュ保存）、処理完了後は破棄する。`card_name` による集計（カード別統計）には `multiverse_id` は不要なため、`actions` テーブルへの追加は行わない。
-
----
-
-## エラー定義
-
-```python
-class ParseError(Exception):
-    """ログファイルのパースに失敗した場合"""
-    pass
-```
-
----
-
-## ユニットテスト設計
-
-テストファイル: `backend/tests/test_log_parser.py`
-フレームワーク: `pytest`
-
----
-
-### カテゴリ1: `parse_file()` 統合テスト（正常系）
-
-| # | テストケース | 検証内容 |
-|---|------------|---------|
-| 1 | 2-0 マッチ | `games` が2件、`match_winner` が正しい |
-| 2 | 2-1 マッチ | `games` が3件、中間スコア後に正しく勝者が決まる |
-| 3 | マリガンあり（1回） | `mulligans[player] = 1` |
-| 4 | マリガンあり（2回） | `mulligans[player] = 2` |
-| 5 | 両者マリガンあり | 各プレイヤーのマリガン回数が独立して正しい |
-| 6 | コンシード（`loses the game.`） | 勝者 = もう一方のプレイヤー |
-| 7 | ダイス再ロール（同点） | プレイヤー情報・ゲーム構造に影響しない |
-| 8 | 先手1ターン目スキップ（`skips their draw step.`） | ターン数カウントが正しい |
-
----
-
-### カテゴリ2: 個別メソッドテスト
-
-#### `_read_events()`
-
-| # | テストケース | 期待結果 |
-|---|------------|---------|
-| 9 | 正常なバイナリ | イベントリストが返る |
-| 10 | 長さフィールドが実際のメッセージ長と一致 | 全メッセージが欠損なく取得できる |
-
-#### `_parse_match_header()`
-
-| # | テストケース | 期待結果 |
-|---|------------|---------|
-| 11 | 正常ヘッダー | match_id（UUID）が返る |
-| 12 | マジックバイトが `\x01\x00` 以外 | `ParseError` |
-
-#### `_split_games()`
-
-| # | テストケース | 期待結果 |
-|---|------------|---------|
-| 13 | 2ゲームのイベント列 | リスト長 = 2 |
-| 14 | 3ゲームのイベント列 | リスト長 = 3 |
-| 15 | `joined the game.` が1件しかない | `ParseError` |
-
-#### `_parse_game()`
-
-| # | テストケース | 期待結果 |
-|---|------------|---------|
-| 16 | `chooses to play first.` あり | `first_player` が正しい |
-| 17 | `begins the game with seven cards` | `mulligans = 0` |
-| 18 | `mulligans to five cards.` が2回 | `mulligans = 2` |
-| 19 | `Turn N: {player}` が複数 | `turns` が正しくカウントされる |
-| 20 | `wins the game.` で終了 | `winner` が正しい |
-| 21 | `loses the game.` で終了 | `winner` = もう一方のプレイヤー |
-
-#### `_parse_action()`
-
-| # | テストケース | 期待結果 |
-|---|------------|---------|
-| 22 | `plays @[Mountain@:...]` | `action_type="play"`, `card_name="Mountain"` |
-| 23 | `casts @[Lightning Bolt@:...]` | `action_type="cast"`, `card_name="Lightning Bolt"` |
-| 24 | `activates an ability of @[...]` | `action_type="activate"` |
-| 25 | `is being attacked by @[...]` | `action_type="attack"` |
-| 26 | `draws a card` | `action_type="draw"`, `card_name=""` |
-| 27 | `mulligans to six cards.` | `action_type="mulligan"` |
-
-#### `_extract_card_name()`
-
-| # | テストケース | 期待結果 |
-|---|------------|---------|
-| 28 | `@[Slickshot Show-Off@:248406,428:@]` | `"Slickshot Show-Off"` |
-| 29 | カード参照なしのメッセージ | `""` |
-| 30 | メッセージ中に複数カード参照 | 先頭のカード名を返す |
-
----
-
-### カテゴリ3: 異常系
-
-| # | テストケース | 期待結果 |
-|---|------------|---------|
-| 31 | 存在しないファイルパス | `FileNotFoundError` |
-| 32 | 空ファイル | `ParseError` |
-| 33 | テキストファイル（非バイナリ） | `ParseError` |
-| 34 | バイナリ途中切断（truncated） | `ParseError` |
-
----
-
-### テストデータ方針
-
-- カテゴリ1（統合テスト）: `docs/sample_data/` の実ファイルを使用
-- カテゴリ2・3（単体テスト）: テスト内でバイナリデータをインラインで構築する（`pytest` の `fixture` として定義）
-
----
-
-## TODO
-
-- [ ] テストの実装（実装フェーズで対応）
