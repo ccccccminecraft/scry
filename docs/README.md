@@ -19,6 +19,30 @@ MTGOおよびMTGAの対戦ログを記録・分析するElectronアプリ。
 
 ---
 
+## 設計・実装中の機能（features/）
+
+[features/](features/) に設計・実装中の機能ドキュメントを格納する。
+
+| ディレクトリ | 機能 | ステータス |
+|------------|------|----------|
+| [features/replay/](features/replay/) | リプレイ機能 | 設計中 |
+
+### ライフサイクル
+
+```
+docs/features/<機能>/
+  requirements.md   ← 要件定義
+  design.md         ← 詳細設計（要件合意後に追加）
+       ↓ 実装完了
+  生きているドキュメント（db-schema.md / api.md / screens.md 等）へ反映
+       +
+  docs/archive/<機能>/  ← 設計経緯として保存
+```
+
+> `features/` のドキュメントは設計・実装中のもの。生きているドキュメントは常に「現在動いている実装」のみを表す。
+
+---
+
 ## アーカイブ（変更しない・参照専用）
 
 [archive/](archive/) に旧設計書・実装作業ログを格納。
