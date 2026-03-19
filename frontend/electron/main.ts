@@ -81,6 +81,15 @@ ipcMain.handle('select-dat-file', async () => {
   return result.canceled ? null : result.filePaths[0]
 })
 
+// IPC: 単体JSONファイル選択 (MTGA / Surveil)
+ipcMain.handle('select-json-file', async () => {
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    properties: ['openFile'],
+    filters: [{ name: 'Surveil JSON', extensions: ['json'] }],
+  })
+  return result.canceled ? null : result.filePaths[0]
+})
+
 // IPC: フォルダスキャン
 ipcMain.handle('scan-folder', async () => {
   const result = await dialog.showOpenDialog(mainWindow!, {
@@ -100,6 +109,24 @@ ipcMain.handle('scan-folder-quick', (_event, folderPath: string) => {
     path: filePath,
     mtime: fs.statSync(filePath).mtimeMs,
   }))
+})
+
+// IPC: Surveil フォルダスキャン（.json ファイル一覧を mtime/size 付きで返す）
+ipcMain.handle('scan-surveil-folder', (_event, folderPath: string) => {
+  const results: Array<{ path: string; name: string; mtime: number; size: number }> = []
+  try {
+    const entries = fs.readdirSync(folderPath, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.endsWith('.json')) {
+        const fullPath = path.join(folderPath, entry.name)
+        const stat = fs.statSync(fullPath)
+        results.push({ path: fullPath, name: entry.name, mtime: stat.mtimeMs, size: stat.size })
+      }
+    }
+  } catch {
+    // アクセス権限エラー等は無視
+  }
+  return results
 })
 
 // IPC: ファイル読み込み

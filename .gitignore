@@ -3,6 +3,7 @@ database/*
 docs/sample_data/
 docs/dek_sample_data/
 docs/mtga_sample_data/
+docs/surveil_sample_data/
 
 # Frontend
 frontend/node_modules/

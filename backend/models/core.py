@@ -18,6 +18,7 @@ class Match(Base):
     game_count: Mapped[int] = mapped_column(Integer, nullable=False)
     format: Mapped[str | None] = mapped_column(Text, nullable=True)
     imported_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False, default="mtgo")
 
     players: Mapped[list["MatchPlayer"]] = relationship(
         back_populates="match", cascade="all, delete-orphan"
@@ -40,6 +41,7 @@ class MatchPlayer(Base):
     seat: Mapped[int] = mapped_column(Integer, nullable=False)
     deck_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     game_plan: Mapped[str | None] = mapped_column(Text, nullable=True)
+    deck_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     deck_version_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("deck_versions.id", ondelete="SET NULL"), nullable=True
     )
@@ -99,5 +101,6 @@ class Action(Base):
     card_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     target_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    phase: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     game: Mapped["Game"] = relationship(back_populates="actions")

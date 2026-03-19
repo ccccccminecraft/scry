@@ -13,8 +13,87 @@
       <button v-if="state !== 'idle'" class="btn-back" @click="reset">← 戻る</button>
     </div>
 
+    <!-- タブ -->
+    <div v-if="state === 'idle'" class="tabs">
+      <button
+        class="tab"
+        :class="{ 'tab--active': activeTab === 'mtgo' }"
+        @click="activeTab = 'mtgo'"
+      >MTGO</button>
+      <button
+        class="tab"
+        :class="{ 'tab--active': activeTab === 'mtga' }"
+        @click="activeTab = 'mtga'"
+      >MTGA (Surveil)</button>
+    </div>
+
+    <!-- ── MTGA タブ ── -->
+    <template v-if="state === 'idle' && activeTab === 'mtga'">
+      <div class="quick">
+        <div class="quick__label">Surveil 監視フォルダ</div>
+
+        <!-- フォルダ登録済み -->
+        <template v-if="surveilFolder">
+          <p class="quick__path">📁 {{ surveilFolder }}</p>
+          <p v-if="surveilPending !== null" class="quick__since">
+            未取り込み:
+            <span v-if="surveilPending > 0" style="color: #4a6fa5; font-weight: bold;">{{ surveilPending }} 件</span>
+            <span v-else>なし</span>
+          </p>
+          <div class="quick__actions">
+            <button
+              class="btn btn--primary"
+              :disabled="surveilRunning || surveilPending === 0"
+              @click="runSurveilScan"
+            >
+              {{ surveilRunning ? '取り込み中...' : '全て取り込む' }}
+            </button>
+            <button class="btn" @click="loadSurveilPending" :disabled="surveilRunning">更新</button>
+            <button class="btn" @click="changeSurveilFolder">フォルダを変更</button>
+          </div>
+
+          <!-- pending ファイル一覧 -->
+          <div v-if="surveilPendingFiles.length > 0" class="scan-list" style="margin-top: 8px;">
+            <div
+              v-for="f in surveilPendingFiles"
+              :key="f.match_id"
+              class="scan-item"
+              style="cursor: default;"
+            >
+              <span class="scan-item__name">{{ f.filename }}</span>
+              <span style="margin-left: auto; font-size: 11px; color: #b0a090;">
+                {{ new Date(f.mtime * 1000).toLocaleString('ja-JP') }}
+              </span>
+            </div>
+          </div>
+        </template>
+
+        <!-- フォルダ未登録 -->
+        <template v-else>
+          <p class="quick__desc">
+            Surveil の出力フォルダ（matches/）を登録してください
+          </p>
+          <button class="btn btn--primary" @click="registerSurveilFolder">フォルダを登録する</button>
+        </template>
+      </div>
+
+      <div class="divider">── または ──</div>
+
+      <div
+        class="dropzone"
+        :class="{ 'dropzone--over': dragOver }"
+        @dragover.prevent="dragOver = true"
+        @dragleave="dragOver = false"
+        @drop.prevent="handleSurveilDrop"
+      >
+        <p class="dropzone__label">JSON ファイルをドラッグ＆ドロップ</p>
+        <p class="dropzone__sub">または</p>
+        <button class="btn btn--primary" @click="selectSurveilFile">ファイルを選択</button>
+      </div>
+    </template>
+
     <!-- Idle -->
-    <template v-if="state === 'idle'">
+    <template v-if="state === 'idle' && activeTab === 'mtgo'">
 
       <!-- クイックインポート -->
       <div class="quick">
@@ -72,7 +151,7 @@
         </button>
         <p class="hint">ヒント: C:\Users\[ユーザー名]\AppData\Local\Apps\2.0</p>
       </div>
-    </template>
+    </template>  <!-- /mtgo idle -->
 
     <!-- Scanning -->
     <div v-else-if="state === 'scanning'" class="status-msg">
@@ -163,7 +242,14 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { importSingleFile, type ImportResult } from '../api/import'
+import {
+  importSingleFile,
+  importSurveilFile,
+  getSurveilFolder,
+  setSurveilFolder,
+  getSurveilImportedIds,
+  type ImportResult,
+} from '../api/import'
 import { fetchSettings, updateSettings } from '../api/settings'
 import { fetchLatestMatchDate } from '../api/matches'
 import { useToast } from '../composables/useToast'
@@ -192,11 +278,25 @@ type State = 'idle' | 'scanning' | 'scan_result' | 'importing' | 'batch_result'
 
 const state = ref<State>('idle')
 const dragOver = ref(false)
+const activeTab = ref<'mtgo' | 'mtga'>('mtgo')
 
-// クイックインポート
+// クイックインポート (MTGO)
 const quickFolder = ref<string | null>(null)
 const latestDate = ref<string | null>(null)
 const quickRunning = ref(false)
+
+// Surveil (MTGA)
+interface SurveilPendingItem {
+  filename: string
+  match_id: string
+  mtime: number  // seconds (表示用)
+  size: number
+  path: string   // ローカルパス (Electron 読み込み用)
+}
+const surveilFolder = ref<string | null>(null)
+const surveilPending = ref<number | null>(null)
+const surveilPendingFiles = ref<SurveilPendingItem[]>([])
+const surveilRunning = ref(false)
 
 // scan result
 const folderPath = ref('')
@@ -227,12 +327,17 @@ const allChecked = computed(() => scanFiles.value.length > 0 && checkedCount.val
 
 onMounted(async () => {
   try {
-    const [settings, latest] = await Promise.all([
+    const [settings, latest, surveilFolderRes] = await Promise.all([
       fetchSettings(),
       fetchLatestMatchDate(),
+      getSurveilFolder(),
     ])
     quickFolder.value = settings.quick_import_folder
     latestDate.value = latest
+    surveilFolder.value = surveilFolderRes.folder
+    if (surveilFolderRes.folder) {
+      loadSurveilPending()
+    }
   } catch {
     // 失敗しても無視
   }
@@ -316,6 +421,131 @@ async function runQuickImport() {
   } finally {
     quickRunning.value = false
   }
+}
+
+// ── Surveil (MTGA) ──────────────────────────────────────────────────────
+
+async function registerSurveilFolder() {
+  const result = await window.electronAPI.scanFolder()
+  if (!result) return
+  await saveSurveilFolder(result.folderPath)
+}
+
+async function changeSurveilFolder() {
+  const result = await window.electronAPI.scanFolder()
+  if (!result) return
+  await saveSurveilFolder(result.folderPath)
+}
+
+async function saveSurveilFolder(path: string) {
+  try {
+    await setSurveilFolder(path)
+    surveilFolder.value = path
+    await loadSurveilPending()
+  } catch (e) {
+    showError(e instanceof Error ? e.message : 'フォルダの保存に失敗しました')
+  }
+}
+
+async function loadSurveilPending() {
+  if (!surveilFolder.value) return
+  try {
+    const [files, importedIds] = await Promise.all([
+      window.electronAPI.scanSurveilFolder(surveilFolder.value),
+      getSurveilImportedIds(),
+    ])
+    const importedSet = new Set(importedIds)
+    const pending = files
+      .filter(f => !importedSet.has(f.name.replace(/\.json$/i, '')))
+      .sort((a, b) => b.mtime - a.mtime)
+      .map(f => ({
+        filename: f.name,
+        match_id: f.name.replace(/\.json$/i, ''),
+        mtime: f.mtime / 1000,
+        size: f.size,
+        path: f.path,
+      }))
+    surveilPendingFiles.value = pending
+    surveilPending.value = pending.length
+  } catch {
+    surveilPending.value = null
+  }
+}
+
+async function runSurveilScan() {
+  if (surveilRunning.value) return
+  surveilRunning.value = true
+  try {
+    const targets = surveilPendingFiles.value.map(f => ({ path: f.path, name: f.filename }))
+    if (targets.length === 0) {
+      showSuccess('取り込むファイルがありません')
+      return
+    }
+    await runSurveilImport(targets)
+  } catch (e) {
+    showError(e instanceof Error ? e.message : '取り込みに失敗しました')
+  } finally {
+    surveilRunning.value = false
+    surveilPendingFiles.value = []
+    surveilPending.value = 0
+  }
+}
+
+async function handleSurveilDrop(e: DragEvent) {
+  dragOver.value = false
+  const files = e.dataTransfer?.files
+  if (!files || files.length === 0) return
+
+  const items: Array<{ path: string; name: string }> = []
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i] as File & { path?: string }
+    if (!f.name.endsWith('.json')) continue
+    items.push({ path: f.path ?? f.name, name: f.name })
+  }
+  if (items.length === 0) {
+    showError('.json ファイルをドロップしてください')
+    return
+  }
+  await runSurveilImport(items)
+}
+
+async function selectSurveilFile() {
+  const path = await window.electronAPI.selectJsonFile()
+  if (!path) return
+  const name = path.split(/[\\/]/).pop() ?? path
+  await runSurveilImport([{ path, name }])
+}
+
+async function runSurveilImport(targets: Array<{ path: string; name: string }>) {
+  state.value = 'importing'
+  importDone.value = 0
+  importTotal.value = targets.length
+
+  let imported = 0
+  let skipped = 0
+  let errors = 0
+  const results: BatchResult['results'] = []
+
+  for (const target of targets) {
+    try {
+      const buf: Buffer = await window.electronAPI.readDatFile(target.path)
+      const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
+      const result: ImportResult = await importSurveilFile(target.name, ab)
+
+      results.push({ name: target.name, status: result.status, match_id: result.match_id, reason: result.reason ?? undefined })
+      if (result.status === 'imported') imported++
+      else if (result.status === 'skipped') skipped++
+      else errors++
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : '不明なエラー'
+      results.push({ name: target.name, status: 'error', reason })
+      errors++
+    }
+    importDone.value++
+  }
+
+  batchResult.value = { imported, skipped, errors, results }
+  state.value = 'batch_result'
 }
 
 // ── 手動インポート ───────────────────────────────────────────────────────
@@ -455,6 +685,38 @@ function formatDate(iso: string): string {
 
 .btn-back:hover {
   color: #2c2416;
+}
+
+/* ── タブ ── */
+.tabs {
+  display: flex;
+  border-bottom: 2px solid #e0d8c8;
+  margin-bottom: 20px;
+  gap: 4px;
+}
+
+.tab {
+  padding: 8px 20px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  background: none;
+  color: #7a6a55;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  border-radius: 4px 4px 0 0;
+}
+
+.tab:hover {
+  color: #2c2416;
+  background: #f5f0e8;
+}
+
+.tab--active {
+  color: #2c2416;
+  font-weight: bold;
+  border-bottom-color: #4a6fa5;
 }
 
 /* ── クイックインポート ── */

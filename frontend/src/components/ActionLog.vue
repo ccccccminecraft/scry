@@ -10,6 +10,7 @@
         <span class="action-log__type">{{ ACTION_LABELS[a.action_type] ?? a.action_type }}</span>
         <span v-if="a.card_name" class="action-log__card">{{ a.card_name }}</span>
         <span v-if="a.target_name" class="action-log__target">→ {{ a.target_name }}</span>
+        <span v-if="a.phase" class="action-log__phase">{{ PHASE_LABELS[a.phase] ?? a.phase }}</span>
       </div>
     </template>
   </div>
@@ -27,12 +28,29 @@ const ACTION_LABELS: Record<string, string> = {
   activate:       '能力起動',
   trigger:        '誘発',
   attack:         '攻撃',
+  block:          'ブロック',
   draw:           'ドロー',
   discard:        '捨てる',
+  mill:           'ミル',
+  damage:         'ダメージ',
   reveal:         '公開',
   add_counter:    'カウンター追加',
   remove_counter: 'カウンター除去',
   mulligan:       'マリガン',
+}
+
+const PHASE_LABELS: Record<string, string> = {
+  beginning:         'アンタップ',
+  upkeep:            'アップキープ',
+  draw_step:         'ドロー',
+  main1:             'メイン1',
+  begin_combat:      '戦闘開始',
+  declare_attackers: '攻撃宣言',
+  declare_blockers:  'ブロック宣言',
+  combat_damage:     '戦闘ダメージ',
+  end_combat:        '戦闘終了',
+  main2:             'メイン2',
+  ending:            'エンド',
 }
 
 const groupedByTurnPlayer = computed(() => {
@@ -98,5 +116,12 @@ const groupedByTurnPlayer = computed(() => {
 
 .action-log__target {
   color: #8b4a2a;
+}
+
+.action-log__phase {
+  margin-left: auto;
+  font-size: 11px;
+  color: #b0a090;
+  white-space: nowrap;
 }
 </style>

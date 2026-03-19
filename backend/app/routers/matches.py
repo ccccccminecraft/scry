@@ -575,6 +575,7 @@ def get_actions(match_id: str, game_id: int, db: Session = Depends(get_db)):
         "actions": [
             {
                 "turn": a.turn,
+                "phase": a.phase,
                 "active_player": a.active_player,
                 "player": a.player_name,
                 "action_type": a.action_type,

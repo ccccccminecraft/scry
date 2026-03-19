@@ -78,6 +78,27 @@ def init_db() -> None:
                 conn.execute(text("ALTER TABLE deck_versions ADD COLUMN is_archived BOOLEAN NOT NULL DEFAULT 0"))
                 conn.commit()
 
+        # matches: source 列の追加
+        if "matches" in inspector.get_table_names():
+            cols = {c["name"] for c in inspector.get_columns("matches")}
+            if "source" not in cols:
+                conn.execute(text("ALTER TABLE matches ADD COLUMN source TEXT NOT NULL DEFAULT 'mtgo'"))
+                conn.commit()
+
+        # match_players: deck_json 列の追加
+        if "match_players" in inspector.get_table_names():
+            cols = {c["name"] for c in inspector.get_columns("match_players")}
+            if "deck_json" not in cols:
+                conn.execute(text("ALTER TABLE match_players ADD COLUMN deck_json TEXT"))
+                conn.commit()
+
+        # actions: phase 列の追加
+        if "actions" in inspector.get_table_names():
+            cols = {c["name"] for c in inspector.get_columns("actions")}
+            if "phase" not in cols:
+                conn.execute(text("ALTER TABLE actions ADD COLUMN phase TEXT"))
+                conn.commit()
+
         # analysis_sessions: フィルター列の追加
         if "analysis_sessions" in inspector.get_table_names():
             cols = {c["name"] for c in inspector.get_columns("analysis_sessions")}

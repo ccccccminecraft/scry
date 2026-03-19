@@ -45,6 +45,7 @@ export interface MatchDetail {
 
 export interface ActionEntry {
   turn: number
+  phase: string | null
   active_player: string
   player: string
   action_type: string

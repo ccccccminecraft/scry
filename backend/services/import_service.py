@@ -1,8 +1,10 @@
 """
 ImportService - .dat ファイルのパース・DB 保存・フォーマット推定を行う。
+SurveilImportService - Surveil JSON (MTGA) のパース・DB 保存を行う。
 """
 from __future__ import annotations
 
+import json as json_module
 import logging
 from datetime import datetime, timezone
 from typing import Literal, TypedDict
@@ -12,6 +14,12 @@ from sqlalchemy.orm import Session
 from models.core import Match, MatchPlayer, Game, Mulligan, Action
 from models.deck import DeckDefinition
 from parser.log_parser import MTGOLogParser, ParseError, ParseResult
+from parser.surveil_parser import (
+    SurveilParseResult,
+    ParseError as SurveilParseError,
+    get_non_basic_card_names,
+    parse_surveil_json,
+)
 from services.scryfall_client import ScryfallClient
 
 logger = logging.getLogger(__name__)
@@ -175,57 +183,7 @@ class ImportService:
             self._db.flush()
 
     def _detect_deck(self, player_name: str, used_cards: set[str], fmt: str | None) -> str | None:
-        """
-        使用カードとデッキ定義を照合してデッキ名を返す。
-        優先順位: プレイヤー固有定義 → 共通定義（player_name IS NULL）
-        マッチなしの場合は None を返す。
-        """
-        # プレイヤー固有定義を先に、次に共通定義を取得（登録順）
-        definitions = (
-            self._db.query(DeckDefinition)
-            .filter(
-                (DeckDefinition.player_name == player_name) |
-                (DeckDefinition.player_name.is_(None))
-            )
-            .order_by(
-                # player固有を先に（NULLは後）
-                DeckDefinition.player_name.nullslast(),
-                DeckDefinition.id,
-            )
-            .all()
-        )
-
-        if not definitions:
-            return None
-
-        # フォーマットフィルタ適用後の定義でマッチ数を計算
-        best_name: str | None = None
-        best_count: int = 0
-        best_is_player: bool = False
-
-        for defn in definitions:
-            if defn.format and fmt and defn.format != fmt:
-                continue
-            exclude_cards = {c.card_name for c in defn.cards if c.is_exclude}
-            if exclude_cards & used_cards:
-                continue  # 除外カードが1枚でも含まれていればスキップ
-            sig_cards = {c.card_name for c in defn.cards if not c.is_exclude}
-            match_count = len(sig_cards & used_cards)
-
-            is_player = defn.player_name is not None
-
-            # プレイヤー固有定義は共通定義より優先
-            if match_count >= defn.threshold:
-                if (
-                    best_name is None
-                    or match_count > best_count
-                    or (match_count == best_count and is_player and not best_is_player)
-                ):
-                    best_name = defn.deck_name
-                    best_count = match_count
-                    best_is_player = is_player
-
-        return best_name
+        return _detect_deck(self._db, player_name, used_cards, fmt)
 
     def _infer_format(self, parsed: ParseResult) -> str:
         """
@@ -243,6 +201,201 @@ class ImportService:
 
         legalities = self._scryfall.fetch_legalities(list(card_names))
 
+        if not legalities:
+            return "unknown"
+
+        for fmt in FORMAT_PRIORITY:
+            if all(
+                getattr(card, fmt, "not_legal") in _LEGAL_STATUSES
+                for card in legalities.values()
+            ):
+                return fmt
+
+        return "unknown"
+
+
+# ─── 共有ヘルパー ──────────────────────────────────────────────────────────────
+
+def _detect_deck(
+    db: Session,
+    player_name: str,
+    used_cards: set[str],
+    fmt: str | None,
+) -> str | None:
+    """
+    使用カードとデッキ定義を照合してデッキ名を返す。
+    優先順位: プレイヤー固有定義 → 共通定義（player_name IS NULL）
+    マッチなしの場合は None を返す。
+    """
+    definitions = (
+        db.query(DeckDefinition)
+        .filter(
+            (DeckDefinition.player_name == player_name) |
+            (DeckDefinition.player_name.is_(None))
+        )
+        .order_by(
+            DeckDefinition.player_name.nullslast(),
+            DeckDefinition.id,
+        )
+        .all()
+    )
+
+    if not definitions:
+        return None
+
+    best_name: str | None = None
+    best_count: int = 0
+    best_is_player: bool = False
+
+    for defn in definitions:
+        if defn.format and fmt and defn.format != fmt:
+            continue
+        exclude_cards = {c.card_name for c in defn.cards if c.is_exclude}
+        if exclude_cards & used_cards:
+            continue
+        sig_cards = {c.card_name for c in defn.cards if not c.is_exclude}
+        match_count = len(sig_cards & used_cards)
+        is_player = defn.player_name is not None
+
+        if match_count >= defn.threshold:
+            if (
+                best_name is None
+                or match_count > best_count
+                or (match_count == best_count and is_player and not best_is_player)
+            ):
+                best_name = defn.deck_name
+                best_count = match_count
+                best_is_player = is_player
+
+    return best_name
+
+
+# ─── Surveil JSON インポート ───────────────────────────────────────────────────
+
+class SurveilImportService:
+    """Surveil JSON (MTGA) のパース・DB 保存・フォーマット推定を担う。"""
+
+    def __init__(self, db: Session) -> None:
+        self._db = db
+        self._scryfall = ScryfallClient(db)
+
+    def import_one(self, data: dict, filename: str) -> ImportResult:
+        """
+        Surveil JSON dict を受け取りパース・保存する。
+
+        Returns
+        -------
+        ImportResult
+            status が "imported" / "skipped" / "error" のいずれか
+        """
+        try:
+            parsed = parse_surveil_json(data)
+        except SurveilParseError as e:
+            logger.warning("SurveilParseError for %s: %s", filename, e)
+            return ImportResult(match_id="", status="error", format=None, reason=str(e))
+
+        match_id = parsed["match_id"]
+        if self._db.get(Match, match_id) is not None:
+            return ImportResult(
+                match_id=match_id, status="skipped", format=None, reason="already imported"
+            )
+
+        try:
+            self._save(parsed)
+            fmt = self._infer_format_from_deck(parsed["deck_main"])
+            match = self._db.get(Match, match_id)
+            match.format = fmt
+
+            # self プレイヤーのデッキ名を検出（deck_main の全カードを使用）
+            used_cards = set(parsed["deck_main"].keys())
+            for mp in match.players:
+                if mp.player_name == parsed["self_player"]:
+                    refined = _detect_deck(self._db, mp.player_name, used_cards, fmt)
+                    if refined is not None:
+                        mp.deck_name = refined
+
+            self._db.commit()
+        except Exception as e:
+            self._db.rollback()
+            logger.exception("Surveil import failed for %s: %s", filename, e)
+            return ImportResult(match_id=match_id, status="error", format=None, reason=str(e))
+
+        return ImportResult(match_id=match_id, status="imported", format=fmt, reason=None)
+
+    def _save(self, parsed: SurveilParseResult) -> None:
+        """パース結果を DB に flush する（commit はしない）。"""
+        now = datetime.now(tz=timezone.utc)
+        deck_json_str = json_module.dumps(
+            {"main": parsed["deck_main"], "sideboard": parsed["deck_sideboard"]},
+            ensure_ascii=False,
+        )
+
+        match = Match(
+            id=parsed["match_id"],
+            played_at=parsed["played_at"],
+            match_winner=parsed["match_winner"],
+            game_count=len(parsed["games"]),
+            format=None,
+            imported_at=now,
+            source="mtga",
+        )
+        self._db.add(match)
+        self._db.flush()
+
+        for seat, player_name in enumerate(parsed["players"], start=1):
+            is_self = player_name == parsed["self_player"]
+            self._db.add(MatchPlayer(
+                match_id=match.id,
+                player_name=player_name,
+                seat=seat,
+                deck_name=None,
+                deck_json=deck_json_str if is_self else None,
+            ))
+        self._db.flush()
+
+        for game_dict in parsed["games"]:
+            game = Game(
+                match_id=match.id,
+                game_number=game_dict["game_number"],
+                winner=game_dict["winner"],
+                turns=game_dict["turns"],
+                first_player=game_dict["first_player"],
+            )
+            self._db.add(game)
+            self._db.flush()
+
+            for mul in game_dict["mulligans"]:
+                self._db.add(Mulligan(
+                    game_id=game.id,
+                    player_name=mul["player_name"],
+                    count=mul["count"],
+                ))
+
+            for act in game_dict["actions"]:
+                self._db.add(Action(
+                    game_id=game.id,
+                    turn=act["turn"],
+                    phase=act["phase"] or None,
+                    active_player=act["active_player"],
+                    player_name=act["player"],
+                    action_type=act["action_type"],
+                    card_name=act["card_name"],
+                    target_name=act["target_name"],
+                    sequence=act["sequence"],
+                ))
+
+            self._db.flush()
+
+    def _infer_format_from_deck(self, deck_main: dict[str, int]) -> str:
+        """
+        デッキリスト（card_name → count）から Scryfall で legality を確認し
+        FORMAT_PRIORITY 順にフォーマットを返す。基本土地は除外する。
+        """
+        card_names = get_non_basic_card_names(deck_main)
+        if not card_names:
+            return "unknown"
+
+        legalities = self._scryfall.fetch_legalities(card_names)
         if not legalities:
             return "unknown"
 
