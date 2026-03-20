@@ -162,7 +162,7 @@ import { fetchSettings, updateSettings, deleteApiKey } from '../api/settings'
 import { fetchPlayers } from '../api/stats'
 import { downloadBackup, restoreBackup } from '../api/backup'
 import { deleteAllMatches, deleteMatchesByRange, resetDatabase } from '../api/deletion'
-import { getSyncStatus, syncCardNames, getMtgaSyncStatus, setMtgaFolder, syncMtgaCards } from '../api/admin'
+import { getMtgaSyncStatus, setMtgaFolder, syncMtgaCards } from '../api/admin'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import TypeToConfirmDialog from '../components/TypeToConfirmDialog.vue'
 
@@ -184,8 +184,6 @@ const defaultPlayerInput = ref('')
 const appVersion = ref('')
 const minPlayerMatchesInput = ref(1)
 const minDeckMatchesInput = ref(1)
-const syncing = ref(false)
-const lastSyncedAt = ref<string | null>(null)
 const mtgaFolderInput = ref('')
 const mtgaFolderSaved = ref(false)
 const mtgaSyncing = ref(false)
@@ -193,11 +191,10 @@ const mtgaLastSyncedAt = ref<string | null>(null)
 
 onMounted(async () => {
   try {
-    const [s, players, health, syncStatus, mtgaStatus] = await Promise.all([
+    const [s, players, health, mtgaStatus] = await Promise.all([
       fetchSettings(),
       fetchPlayers(),
       axios.get('http://localhost:18432/api/health').catch(() => null),
-      getSyncStatus().catch(() => null),
       getMtgaSyncStatus().catch(() => null),
     ])
     configured.value = s.api_key_configured
@@ -206,9 +203,6 @@ onMounted(async () => {
     appVersion.value = health?.data?.version ?? ''
     minPlayerMatchesInput.value = s.min_player_matches ?? 1
     minDeckMatchesInput.value = s.min_deck_matches ?? 1
-    if (syncStatus?.last_synced_at) {
-      lastSyncedAt.value = new Date(syncStatus.last_synced_at).toLocaleString('ja-JP')
-    }
     if (mtgaStatus?.folder) {
       mtgaFolderInput.value = mtgaStatus.folder
       mtgaFolderSaved.value = true
@@ -367,18 +361,6 @@ async function handleSyncMtgaCards() {
   }
 }
 
-async function handleSyncCardNames() {
-  syncing.value = true
-  try {
-    const result = await syncCardNames()
-    lastSyncedAt.value = new Date().toLocaleString('ja-JP')
-    showSuccess(`カード名データを同期しました（${result.synced.toLocaleString()} 件）`)
-  } catch {
-    showError('同期に失敗しました')
-  } finally {
-    syncing.value = false
-  }
-}
 
 async function removeApiKey() {
   if (!confirm('APIキーを削除しますか？')) return
