@@ -96,8 +96,8 @@ class ScryfallClient:
         """
         MTGA arena_id（grpId）のリストからカード名を返す。
 
-        キャッシュ済み分は DB から取得し、未キャッシュ分のみ
-        Scryfall POST /cards/collection（最大 75 件/バッチ）で取得する。
+        mtga_cards テーブル（Raw_CardDatabase から同期済み）のみを参照する。
+        同期されていない ID は結果から除外される。
 
         Returns
         -------
@@ -109,30 +109,12 @@ class ScryfallClient:
 
         unique_ids = list(set(arena_ids))
 
-        # キャッシュ済みを一括取得
-        cached = (
+        rows = (
             self._db.query(MtgaCard)
             .filter(MtgaCard.arena_id.in_(unique_ids))
             .all()
         )
-        result: dict[int, str] = {c.arena_id: c.card_name for c in cached}
-
-        # 未キャッシュ分を個別取得（GET /cards/arena/{id}）
-        uncached = [aid for aid in unique_ids if aid not in result]
-        for arena_id in uncached:
-            name = self._fetch_one_by_arena_id(arena_id)
-            if name:
-                self._db.add(MtgaCard(
-                    arena_id=arena_id,
-                    card_name=name,
-                    fetched_at=datetime.now(timezone.utc),
-                ))
-                result[arena_id] = name
-
-        if uncached:
-            self._db.flush()
-
-        return result
+        return {c.arena_id: c.card_name for c in rows}
 
     def _fetch_one_by_arena_id(self, arena_id: int) -> str | None:
         """

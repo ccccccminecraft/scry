@@ -9,6 +9,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Literal, TypedDict
 
+from fastapi import BackgroundTasks
 from sqlalchemy.orm import Session
 
 from models.core import Match, MatchPlayer, Game, Mulligan, Action
@@ -317,7 +318,12 @@ class SurveilImportService:
         self._db = db
         self._scryfall = ScryfallClient(db)
 
-    def import_one(self, data: dict, filename: str) -> ImportResult:
+    def import_one(
+        self,
+        data: dict,
+        filename: str,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> ImportResult:
         """
         Surveil 出力ファイルをデシリアライズした dict を受け取りパース・保存する。
         schema_version=2 と schema_version=3 の両方に対応する。
@@ -328,7 +334,7 @@ class SurveilImportService:
             status が "imported" / "skipped" / "error" のいずれか
         """
         if data.get("schema_version") == 3:
-            return self._import_v3(data, filename)
+            return self._import_v3(data, filename, background_tasks)
 
         try:
             parsed = parse_surveil_json(data)
@@ -428,7 +434,12 @@ class SurveilImportService:
 
             self._db.flush()
 
-    def _import_v3(self, data: dict, filename: str) -> ImportResult:
+    def _import_v3(
+        self,
+        data: dict,
+        filename: str,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> ImportResult:
         """schema_version=3（GRE メッセージ形式）のインポート処理。"""
         try:
             gre_result = parse_gre_json(data)
@@ -478,6 +489,11 @@ class SurveilImportService:
                     for mp in match.players:
                         if mp.player_name == parsed["self_player"]:
                             mp.deck_version_id = version.id
+                    # Scryfall ID・画像URLをバックグラウンドで補完
+                    if background_tasks is not None:
+                        from services.card_image_service import fill_scryfall_ids
+                        card_ids = [vc.card_id for vc in version.cards]
+                        background_tasks.add_task(fill_scryfall_ids, card_ids)
 
             self._db.commit()
         except Exception as e:
@@ -593,6 +609,11 @@ class SurveilImportService:
             作成または既存の DeckVersion。エラー時は None。
         """
         try:
+            # カードが1枚も解決できていない場合はスキップ（mtga_cards 未同期など）
+            if not deck_main and not deck_sideboard:
+                logger.debug("Deck sync: skipped (no cards resolved) for '%s'", deck_name)
+                return None
+
             # カード集合（比較用）: frozenset of (name, quantity, is_sideboard)
             incoming: frozenset[tuple[str, int, bool]] = frozenset(
                 (name, qty, False) for name, qty in deck_main.items() if name

@@ -13,7 +13,7 @@ import json
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -98,7 +98,7 @@ def get_pending(db: Session = Depends(get_db)):
 # ─── 一括インポート ───────────────────────────────────────────────────────────
 
 @router.post("/import/surveil/scan")
-def scan_and_import(db: Session = Depends(get_db)):
+def scan_and_import(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """監視フォルダの pending ファイルを全件インポートする。"""
     s = db.get(Setting, _FOLDER_KEY)
     if not s or not s.value:
@@ -117,13 +117,17 @@ def scan_and_import(db: Session = Depends(get_db)):
         if p.stem not in existing_ids
     ]
 
-    return _run_batch(targets, db)
+    return _run_batch(targets, db, background_tasks)
 
 
 # ─── 単体アップロード ─────────────────────────────────────────────────────────
 
 @router.post("/import/surveil")
-async def import_surveil_file(file: UploadFile, db: Session = Depends(get_db)):
+async def import_surveil_file(
+    file: UploadFile,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """
     Surveil JSON ファイルを1件アップロードしてインポートする。
 
@@ -137,7 +141,7 @@ async def import_surveil_file(file: UploadFile, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
 
     service = SurveilImportService(db)
-    result = service.import_one(data, file.filename or "")
+    result = service.import_one(data, file.filename or "", background_tasks)
 
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["reason"] or "Import failed")
@@ -147,7 +151,11 @@ async def import_surveil_file(file: UploadFile, db: Session = Depends(get_db)):
 
 # ─── 内部ヘルパー ─────────────────────────────────────────────────────────────
 
-def _run_batch(targets: list[Path], db: Session) -> dict:
+def _run_batch(
+    targets: list[Path],
+    db: Session,
+    background_tasks: BackgroundTasks | None = None,
+) -> dict:
     """ファイルパスリストを順次インポートしてバッチ結果を返す。"""
     imported = skipped = errors = 0
     results = []
@@ -163,7 +171,7 @@ def _run_batch(targets: list[Path], db: Session) -> dict:
 
         # ファイルごとに新しいサービスインスタンス（独立トランザクション）
         service = SurveilImportService(db)
-        result = service.import_one(data, path.name)
+        result = service.import_one(data, path.name, background_tasks)
 
         entry: dict = {"filename": path.name, "status": result["status"]}
         if result["status"] == "imported":
