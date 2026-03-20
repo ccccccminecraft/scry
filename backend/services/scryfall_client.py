@@ -10,10 +10,9 @@ import logging
 from datetime import datetime, timezone
 
 import httpx
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from models.cache import CardLegality, MtgaCard, Setting
+from models.cache import CardLegality, MtgaCard
 
 logger = logging.getLogger(__name__)
 
@@ -157,74 +156,6 @@ class ScryfallClient:
         except Exception as e:
             logger.warning("Scryfall arena lookup failed for %d: %s", arena_id, e)
             return None
-
-    def sync_bulk_data(self) -> int:
-        """
-        Scryfall Bulk Data（default_cards）を同期して mtga_cards テーブルを更新する。
-        arena_id を持つカードのみを対象とし、既存レコードは上書きする。
-
-        Returns
-        -------
-        int
-            upsert したカード件数
-        """
-        # Step 1: bulk-data メタ情報取得
-        self._rate_limit()
-        meta_resp = httpx.get(f"{SCRYFALL_BASE}/bulk-data", timeout=REQUEST_TIMEOUT)
-        meta_resp.raise_for_status()
-
-        download_uri: str | None = None
-        for entry in meta_resp.json().get("data", []):
-            if entry.get("type") == "default_cards":
-                download_uri = entry["download_uri"]
-                break
-
-        if not download_uri:
-            raise RuntimeError("default_cards not found in Scryfall bulk-data response")
-
-        # Step 2: バルクデータダウンロード（~100MB、タイムアウトを長めに設定）
-        logger.info("Scryfall bulk download start: %s", download_uri)
-        bulk_resp = httpx.get(download_uri, timeout=300.0)
-        bulk_resp.raise_for_status()
-        cards: list[dict] = bulk_resp.json()
-        logger.info("Scryfall bulk download complete: %d total cards", len(cards))
-
-        # Step 3: arena_id でデデュープ（同一 arena_id を持つ複数印刷物が存在するため）
-        arena_map: dict[int, str] = {}
-        for card in cards:
-            arena_id = card.get("arena_id")
-            if arena_id is None:
-                continue
-            name = card.get("name")
-            if name:
-                arena_map[arena_id] = name
-
-        # INSERT OR REPLACE でバッチ upsert
-        now = datetime.now(timezone.utc)
-        now_str = now.isoformat()
-        rows = [
-            {"arena_id": aid, "card_name": name, "fetched_at": now_str}
-            for aid, name in arena_map.items()
-        ]
-        self._db.execute(
-            text(
-                "INSERT OR REPLACE INTO mtga_cards (arena_id, card_name, fetched_at)"
-                " VALUES (:arena_id, :card_name, :fetched_at)"
-            ),
-            rows,
-        )
-        count = len(arena_map)
-
-        # Step 4: 同期日時を settings に保存
-        setting = self._db.get(Setting, "scryfall_bulk_updated_at")
-        if setting:
-            setting.value = now.isoformat()
-        else:
-            self._db.add(Setting(key="scryfall_bulk_updated_at", value=now.isoformat()))
-        self._db.flush()
-
-        logger.info("Scryfall bulk sync completed: %d arena_id cards upserted", count)
-        return count
 
     def _rate_limit(self) -> None:
         """前回リクエストから 100ms 未満なら sleep して待機する。"""

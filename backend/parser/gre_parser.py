@@ -439,14 +439,14 @@ def _handle_game_state(msg: dict, ctx: _MatchContext) -> None:
 
     game_ctx = _current_game(ctx)
 
-    # GameStateType_Full: ゾーンマップを再構築
+    # GameStateType_Full: ゾーンマップを再構築; Diff: 新規ゾーンを追記
     if gsm_type == "GameStateType_Full":
         ctx.zone_owner = {}
-        for zone in gsm.get("zones", []):
-            zone_id = zone.get("zoneId")
-            owner = zone.get("ownerSeatId")
-            if zone_id is not None and owner is not None:
-                ctx.zone_owner[zone_id] = owner
+    for zone in gsm.get("zones", []):
+        zone_id = zone.get("zoneId")
+        owner = zone.get("ownerSeatId")
+        if zone_id is not None and owner is not None:
+            ctx.zone_owner[zone_id] = owner
 
     # gameObjects: instanceId → grpId を累積 / grpId の合成名を登録
     for obj in gsm.get("gameObjects", []):

@@ -65,26 +65,6 @@
     <div class="settings__section">
       <div class="settings__section-title">カード名データベース（MTGA）</div>
 
-      <div class="settings__subsection-title">Scryfall データ同期</div>
-      <div class="settings__row">
-        <button
-          class="settings__btn settings__btn--primary"
-          :disabled="syncing"
-          @click="handleSyncCardNames"
-        >
-          {{ syncing ? '同期中...' : 'Scryfallデータを同期' }}
-        </button>
-        <span v-if="lastSyncedAt" class="settings__note" style="margin-top: 0;">
-          最終同期: {{ lastSyncedAt }}
-        </span>
-      </div>
-      <p class="settings__note">
-        Scryfall の全カードデータをダウンロードし、MTGAカード名キャッシュを更新します（数十秒かかる場合があります）。
-        Final Fantasy 以降の新セットは Scryfall に arena_id がないため下の MTGA 公式データをご利用ください。
-      </p>
-
-      <div class="settings__divider" />
-
       <div class="settings__subsection-title">MTGA 公式カードデータ同期</div>
       <div class="settings__row">
         <input
