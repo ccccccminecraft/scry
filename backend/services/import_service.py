@@ -506,7 +506,16 @@ class SurveilImportService:
         """
         デッキリスト（card_name → count）から Scryfall で legality を確認し
         MTGA_FORMAT_PRIORITY 順にフォーマットを返す。基本土地は除外する。
+
+        TODO: Limited（Draft/Sealed）検知
+          GRE メッセージにはイベント名が含まれないため、現状は Limited を正確に検知できない。
+          現状は 60 枚未満を Limited とみなして "unknown" を返すが、実際の Limited ログで
+          検証後に条件を見直すこと。
         """
+        # 60 枚未満は Limited（Draft/Sealed）とみなしてスキップ
+        if sum(deck_main.values()) < 60:
+            return "unknown"
+
         card_names = get_non_basic_card_names(deck_main)
         if not card_names:
             return "unknown"
