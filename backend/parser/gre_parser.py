@@ -53,6 +53,7 @@ class GREParseResult(TypedDict):
     games: list[GREGame]
     all_grp_ids: set[int]   # デッキ + 全イベントで登場した grpId（バッチ解決用）
     obj_name_map: dict[int, str]  # grpId → 合成カード名（トークン・基本土地など Scryfall 未収録分の fallback）
+    event_name: Optional[str]     # EventJoin の EventName（例: "Traditional_Ladder"）
 
 
 class ParseError(Exception):
@@ -189,6 +190,7 @@ def parse_gre_json(data: dict) -> GREParseResult:
     match_winner: str = data.get("match_winner", "")
     deck_grp_ids: list[int] = data.get("deck_grp_ids", [])
     sideboard_grp_ids: list[int] = data.get("sideboard_grp_ids", [])
+    event_name: Optional[str] = data.get("event_name")
 
     played_at_str = data.get("played_at", "")
     try:
@@ -249,6 +251,7 @@ def parse_gre_json(data: dict) -> GREParseResult:
         games=games,
         all_grp_ids=all_grp_ids,
         obj_name_map=ctx.obj_name_map,
+        event_name=event_name,
     )
 
 

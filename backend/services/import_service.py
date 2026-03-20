@@ -447,8 +447,10 @@ class SurveilImportService:
             parsed = self._convert_gre_result(gre_result, name_map)
 
             self._save(parsed)
-            # expansion_code ベースのフォーマット判定（mtga_cards 未同期時は Scryfall fallback）
-            fmt = self._infer_format_from_grp_ids(gre_result["deck_grp_ids"])
+            # フォーマット判定: EventName → expansion_code → Scryfall（優先順）
+            fmt = self._format_from_event_name(gre_result["event_name"])
+            if fmt is None:
+                fmt = self._infer_format_from_grp_ids(gre_result["deck_grp_ids"])
             if fmt is None:
                 fmt = self._infer_format_from_deck(parsed["deck_main"])
             match = self._db.get(Match, match_id)
@@ -531,6 +533,36 @@ class SurveilImportService:
             deck_sideboard=sb_counts,
             games=games,
         )
+
+    def _format_from_event_name(self, event_name: str | None) -> str | None:
+        """
+        EventJoin の EventName からフォーマットを判定する。
+
+        EventName の例:
+          "Traditional_Ladder"  → standard（Bo3 スタンダードランク）
+          "Ladder"              → standard（Bo1 スタンダードランク）
+          "Traditional_Pioneer_Ladder" → pioneer
+          "Explorer_Ladder"     → pioneer（Explorer は Pioneer 相当）
+          "Historic_Ladder"     → unknown（Historic は MTGA 独自フォーマット）
+          "Draft_BLB"           → unknown（Limited）
+          "Sealed_WOE"          → unknown（Limited）
+
+        マッチング優先順位（上から順に評価）:
+          1. Pioneer / Explorer キーワード → "pioneer"
+          2. Historic / Timeless / Alchemy / Draft / Sealed → "unknown"
+          3. Ladder キーワード（上記に引っかからなかった） → "standard"
+          4. 不明 / None → None（fallback へ）
+        """
+        if not event_name:
+            return None
+        en = event_name.lower()
+        if "pioneer" in en or "explorer" in en:
+            return "pioneer"
+        if any(kw in en for kw in ("historic", "timeless", "alchemy", "draft", "sealed")):
+            return "unknown"
+        if "ladder" in en:
+            return "standard"
+        return None
 
     def _infer_format_from_grp_ids(self, deck_grp_ids: list[int]) -> str | None:
         """
