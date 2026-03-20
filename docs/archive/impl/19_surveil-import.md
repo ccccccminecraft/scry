@@ -1,4 +1,8 @@
-# 詳細設計: Surveil JSON インポート（MTGA 対応）
+# 詳細設計: Surveil 出力ファイルインポート（MTGA 対応）
+
+> **注意**: このドキュメントは schema_version=2 の実装記録を含む。
+> schema_version=3（現行）の仕様は末尾の「schema_version=3 対応」セクションおよび
+> `/home/cccccc/claude/surveil/docs/04_new_spec.md` を参照。
 
 ## 対象ファイル
 
@@ -440,3 +444,81 @@ Scry（フロントエンド）
 7. `POST /api/import/surveil/scan` で一括インポートが実行され、結果が返ることを確認する
 8. フロントエンドの「MTGA」タブでフォルダ設定・取り込みが動作することを確認する
 9. 取り込んだ試合が対戦履歴に表示され、ActionLog にフェイズ名・新イベント種別が表示されることを確認する
+
+---
+
+## schema_version=3 対応（追加実装）
+
+### 概要
+
+Surveil が schema_version=3 形式（raw GRE メッセージ保存）を出力するように変更されたことに伴い、
+`SurveilImportService` に `_import_v3()` メソッドを追加した。
+schema_version=2 は後方互換として引き続きサポートする。
+
+### インポートフロー（schema_version=3）
+
+```
+POST /api/import/surveil
+  ▼ data["schema_version"] == 3 を検出
+  ▼ gre_parser.parse_gre_json(data) → GREParseResult
+      - gre_messages の GameStateMessage アノテーションを解析
+      - grpId は未解決のまま返す
+      - all_grp_ids: デッキ + 全アクションの grpId セット
+      - obj_name_map: トークン・基本土地のフォールバック名
+  ▼ ScryfallClient.fetch_by_arena_ids(all_grp_ids) → name_map
+      1. mtga_cards テーブルのキャッシュ参照
+      2. 未キャッシュ分: Scryfall GET /cards/arena/{id}（100ms レート制限）
+      3. 404 の場合: obj_name_map をフォールバックとして使用
+  ▼ _convert_gre_result(gre_result, name_map) → SurveilParseResult
+      - grp_id → card_name 解決（name_map → obj_name_map の優先順位）
+      - deck_grp_ids → deck_main（card_name → count）
+  ▼ _save(parsed) / _infer_format_from_deck() / commit
+```
+
+### MtgaCard モデル（`models/cache.py`）
+
+```python
+class MtgaCard(Base):
+    __tablename__ = "mtga_cards"
+    arena_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    card_name: Mapped[str] = mapped_column(Text, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+```
+
+### カード名解決の優先順位と解決率
+
+| 優先順位 | 手段 | 対象・備考 |
+|---------|------|-----------|
+| 1 | `mtga_cards` キャッシュ | 過去に解決済みの grpId |
+| 2 | Scryfall `/cards/arena/{id}` | 正規カード（新セットはラグあり） |
+| 3 | `obj_name_map`（合成） | `GameObjectType_Token` → "Warrior Token" 等<br>基本土地 alt-art → "Forest" 等 |
+| 4 | null | 相手の非公開情報・Scryfall 未収録の新セットカード |
+
+実測カード名解決率（8試合・1753アクション）: 約 **97%**
+残り 3% の内訳: TriggerHolder/Ability（設計上 null）、相手非公開情報
+
+### obj_name_map の合成ルール
+
+`_synthesize_obj_name(obj)` の判定:
+- `GameObjectType_Token` + subtypes → `"{subtypes} Token"`（例: "Warrior Token"）
+- `GameObjectType_Card` + `CardType_Land` + 基本土地サブタイプ1種のみ → サブタイプ名（例: "Forest"）
+- その他 `GameObjectType_Card`（Creature, Planeswalker 等）→ `None`
+  - サブタイプはカード名と一致しないため合成しない（Dragon → 実際は Nova Hellkite 等）
+- `GameObjectType_TriggerHolder` / `GameObjectType_Ability` → `None`
+
+### 今後の改善計画
+
+Scryfall Bulk Data（`GET /api.scryfall.com/bulk-data/default-cards`）を定期同期することで、
+個別 API 呼び出しを不要にし、新セットカードの収録ラグを短縮する予定。
+
+- 同期単位: `mtga_cards` テーブルへの upsert
+- トリガー: 管理 API エンドポイント経由（手動 or 定期）
+- fallback: Bulk Data でも未収録の場合は MTGA 公式 CDN データを補助的に利用
+
+### エラーハンドリング追加分
+
+| ケース | 対応 |
+|---|---|
+| `schema_version` が 3 でない | `GREParseError` → `status="error"` |
+| `match_id` なし | `GREParseError` → `status="error"` |
+| Scryfall 取得失敗（個別カード） | そのカードの `card_name=null`、インポートは継続 |

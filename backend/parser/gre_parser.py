@@ -351,34 +351,51 @@ def _process_payload(data: dict, ctx: _MatchContext) -> None:
 
 # ─── ヘルパー ─────────────────────────────────────────────────────────────────
 
+_BASIC_LAND_SUBTYPES: frozenset[str] = frozenset({
+    "Plains", "Island", "Swamp", "Mountain", "Forest",
+})
+
+
 def _synthesize_obj_name(obj: dict) -> Optional[str]:
     """
     gameObject の type / cardTypes / subtypes から合成カード名を作る。
 
     Scryfall の /cards/arena/{id} が 404 を返す場合のフォールバック用。
-    - GameObjectType_Token: "Warrior Token", "Treasure Token" など
-    - GameObjectType_Card + Land: "Forest", "Island" など（基本土地の alt-art arena_id）
-    - GameObjectType_Card + その他: "Dragon", "Human Soldier" など（サブタイプのみ）
-    - GameObjectType_Ability / TriggerHolder: None（カードではない）
+    合成対象を以下の2種に限定する（それ以外はサブタイプ≠カード名のため None）:
+
+    1. GameObjectType_Token: "Warrior Token", "Treasure Token" など
+       - トークンはサブタイプがそのまま型名になる慣習がある
+    2. GameObjectType_Card + Land + 基本土地サブタイプ1種:
+       "Forest", "Island" など（alt-art の arena_id が Scryfall 未収録）
+
+    除外:
+    - GameObjectType_Card + Creature/Planeswalker 等:
+      サブタイプ（Dragon, Oko 等）はカード名と一致しないため合成しない
+    - GameObjectType_Ability / TriggerHolder: カードオブジェクトではない
     """
     obj_type = obj.get("type", "")
     if obj_type in ("GameObjectType_TriggerHolder", "GameObjectType_Ability"):
         return None
 
-    is_token = obj_type == "GameObjectType_Token"
     card_types = obj.get("cardTypes", [])
     subtypes = [s.replace("SubType_", "") for s in obj.get("subtypes", [])]
 
-    if subtypes:
-        name = " ".join(subtypes)
-        if is_token:
-            name += " Token"
-        return name
-    elif card_types:
-        name = " ".join(ct.replace("CardType_", "") for ct in card_types)
-        if is_token:
-            name += " Token"
-        return name
+    # 1. トークン: サブタイプから "Warrior Token" 等を合成
+    if obj_type == "GameObjectType_Token":
+        if subtypes:
+            return " ".join(subtypes) + " Token"
+        if card_types:
+            return " ".join(ct.replace("CardType_", "") for ct in card_types) + " Token"
+        return None
+
+    # 2. 基本土地の alt-art: 単一の基本土地サブタイプのみ許可
+    if (card_types == ["CardType_Land"]
+            and len(subtypes) == 1
+            and subtypes[0] in _BASIC_LAND_SUBTYPES):
+        return subtypes[0]
+
+    # それ以外の GameObjectType_Card は Scryfall に収録されていないカード or 特殊オブジェクト。
+    # サブタイプからカード名を正確に特定できないため None を返す。
     return None
 
 

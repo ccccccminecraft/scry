@@ -111,7 +111,7 @@ SQLite
 ### MTGAログインポート（Surveil）
 
 ```
-Surveil JSON ファイル
+Surveil 出力ファイル（{match_id}.json）
   │
   ├── 手動（ドロップ / ファイル選択）
   │     ▼ POST /api/import/surveil
@@ -121,6 +121,19 @@ Surveil JSON ファイル
         ▼ GET /api/import/surveil/imported-ids → 取り込み済みID取得
         ▼ 差分ファイルを readDatFile で読み込み
         ▼ POST /api/import/surveil（ファイルごと）
+
+schema_version=2（後方互換）:
+  ▼ surveil_parser.py → SurveilParseResult
+  ▼ SurveilImportService._save() → DB 保存
+
+schema_version=3（現行）:
+  ▼ gre_parser.py → GREParseResult（grpId 未解決）
+  ▼ ScryfallClient.fetch_by_arena_ids() → grpId → card_name 解決
+      ├── mtga_cards キャッシュ（DB）
+      ├── Scryfall GET /cards/arena/{id}
+      └── obj_name_map フォールバック（トークン・基本土地）
+  ▼ SurveilImportService._save() → DB 保存
+  ▼ _infer_format_from_deck() → フォーマット推定
 ```
 
 ### AI 分析
@@ -173,12 +186,14 @@ scry/
 │   │   ├── core.py          Match / MatchPlayer / Game / Action / Mulligan
 │   │   ├── decklist.py      Card / Deck / DeckVersion / DeckVersionCard
 │   │   ├── analysis.py      AnalysisSession / AnalysisMessage / PromptTemplate / QuestionSet
-│   │   └── cache.py         Setting / CardLegality
+│   │   └── cache.py         Setting / CardLegality / MtgaCard
 │   ├── services/
-│   │   └── import_service.py  ImportService / SurveilImportService
+│   │   ├── import_service.py   ImportService / SurveilImportService
+│   │   └── scryfall_client.py  Scryfall API クライアント（カード名・レガリティ取得）
 │   ├── parser/
-│   │   ├── mtgo_parser.py   MTGO .dat バイナリパーサー
-│   │   └── surveil_parser.py  Surveil JSON パーサー
+│   │   ├── mtgo_parser.py      MTGO .dat バイナリパーサー
+│   │   ├── surveil_parser.py   Surveil 出力ファイル パーサー（schema_version: 2）
+│   │   └── gre_parser.py       GRE メッセージパーサー（schema_version: 3）
 │   └── database.py          DB 接続・init_db()（ALTER TABLE マイグレーション含む）
 ├── database/
 │   └── mtgo.db              SQLite DB ファイル
@@ -200,6 +215,35 @@ scry/
 
 ### Surveil パーサー（`parser/surveil_parser.py`）
 
-- `schema_version: 2` の JSON を想定
+- `schema_version: 2` の JSON を処理（後方互換として維持）
 - 17 種類のイベントタイプを解析し、action_type にマッピング
 - フォーマット判定: デッキのメインカード名（基本土地除く）から Scryfall で判定
+
+### GRE パーサー（`parser/gre_parser.py`）
+
+- `schema_version: 3` の Surveil 出力ファイルを処理
+- `gre_messages` 内の `GameStateMessage` アノテーションを解析してアクションを抽出
+- grpId はこのパーサーでは解決せず、呼び出し元（`SurveilImportService`）が一括解決する
+- `GREParseResult.all_grp_ids`：デッキ＋全アクションの grpId セット（バッチ解決用）
+- `GREParseResult.obj_name_map`：gameObjects から合成したフォールバック名マップ
+  - 対象：`GameObjectType_Token`（"Warrior Token" 等）、基本土地 alt-art（"Forest" 等）
+  - 除外：その他の `GameObjectType_Card`（サブタイプ ≠ カード名のため合成しない）
+
+---
+
+## カード名解決（MTGA）
+
+grpId（MTGA 内部カード ID）→ カード名の解決は以下の優先順位で行う。
+
+| 優先順位 | 手段 | 対象 |
+|---------|------|------|
+| 1 | `mtga_cards` テーブル（キャッシュ） | 解決済みの全 grpId |
+| 2 | Scryfall `GET /cards/arena/{id}` | 正規カード |
+| 3 | `obj_name_map`（gameObjects から合成） | トークン・基本土地 alt-art |
+| 4 | null | 相手の非公開情報・Scryfall 未収録の新セットカード等 |
+
+### 今後の改善計画（未実装）
+
+Scryfall `Bulk Data API`（`/bulk-data/default-cards`）を定期同期することで、
+個別 API 呼び出しを不要にし、新セットカードの収録ラグを短縮する予定。
+- 解決不能なケース（非常に新しいカード等）が残る場合は MTGA 公式 CDN データを補助的に利用する方針。
