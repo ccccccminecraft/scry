@@ -33,6 +33,9 @@ logger = logging.getLogger(__name__)
 
 FORMAT_PRIORITY = ["standard", "pioneer", "modern", "pauper", "legacy", "vintage"]
 
+# MTGA は Standard / Pioneer のみ対応（Modern 以下は存在しない）
+MTGA_FORMAT_PRIORITY = ["standard", "pioneer"]
+
 # banned カードは試合当時は合法だった可能性が高いため legal 扱いにする
 _LEGAL_STATUSES = {"legal", "banned"}
 
@@ -502,7 +505,7 @@ class SurveilImportService:
     def _infer_format_from_deck(self, deck_main: dict[str, int]) -> str:
         """
         デッキリスト（card_name → count）から Scryfall で legality を確認し
-        FORMAT_PRIORITY 順にフォーマットを返す。基本土地は除外する。
+        MTGA_FORMAT_PRIORITY 順にフォーマットを返す。基本土地は除外する。
         """
         card_names = get_non_basic_card_names(deck_main)
         if not card_names:
@@ -512,7 +515,7 @@ class SurveilImportService:
         if not legalities:
             return "unknown"
 
-        for fmt in FORMAT_PRIORITY:
+        for fmt in MTGA_FORMAT_PRIORITY:
             if all(
                 getattr(card, fmt, "not_legal") in _LEGAL_STATUSES
                 for card in legalities.values()
