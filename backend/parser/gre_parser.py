@@ -129,6 +129,7 @@ _EVENT_TO_ACTION: dict[str, str] = {
     "damage":            "damage",
     "counter_gained":    "counter_gained",
     "counter_lost":      "counter_lost",
+    "emblem_created":    "emblem_created",
 }
 
 
@@ -191,6 +192,8 @@ class _MatchContext:
     obj_controller: dict[int, int] = field(default_factory=dict)  # instanceId → controllerSeatId
     target_map: dict[int, list[int]] = field(default_factory=dict)  # affectorId → affectedIds
     obj_name_map: dict[int, str] = field(default_factory=dict)    # grpId → 合成カード名（fallback用）
+    command_zone_ids: set[int] = field(default_factory=set)       # ZoneType_Command の zoneId 集合
+    seen_command_objects: set[int] = field(default_factory=set)   # コマンドゾーン出現済み instanceId（重複防止）
 
 
 # ─── エントリーポイント ────────────────────────────────────────────────────────
@@ -473,13 +476,16 @@ def _handle_game_state(msg: dict, ctx: _MatchContext) -> None:
     # GameStateType_Full: ゾーンマップを再構築; Diff: 新規ゾーンを追記
     if gsm_type == "GameStateType_Full":
         ctx.zone_owner = {}
+        ctx.command_zone_ids = set()
     for zone in gsm.get("zones", []):
         zone_id = zone.get("zoneId")
         owner = zone.get("ownerSeatId")
         if zone_id is not None and owner is not None:
             ctx.zone_owner[zone_id] = owner
+        if zone.get("type") == "ZoneType_Command" and zone_id is not None:
+            ctx.command_zone_ids.add(zone_id)
 
-    # gameObjects: instanceId → grpId / controllerSeatId を累積
+    # gameObjects: instanceId → grpId / controllerSeatId を累積 + 紋章検知
     for obj in gsm.get("gameObjects", []):
         inst_id = obj.get("instanceId")
         grp_id = obj.get("grpId")
@@ -492,6 +498,30 @@ def _handle_game_state(msg: dict, ctx: _MatchContext) -> None:
         controller = obj.get("controllerSeatId")
         if inst_id is not None and controller is not None:
             ctx.obj_controller[inst_id] = controller
+
+        # コマンドゾーンへの新規オブジェクト出現 → 紋章イベント
+        zone_id = obj.get("zoneId")
+        if (game_ctx is not None
+                and zone_id in ctx.command_zone_ids
+                and inst_id is not None
+                and inst_id not in ctx.seen_command_objects):
+            ctx.seen_command_objects.add(inst_id)
+            owner_seat = obj.get("ownerSeatId")
+            player_name = _seat_to_name(owner_seat, ctx) if owner_seat is not None else ""
+            detail: dict = {}
+            if player_name:
+                detail["player"] = player_name
+            if grp_id:
+                detail["grp_id"] = grp_id
+            else:
+                detail["instance_id"] = inst_id
+            game_ctx.events.append(_EventData(
+                seq=game_ctx.next_seq(),
+                turn=game_ctx.mtgo_turn_number,
+                phase=game_ctx.phase,
+                event_type="emblem_created",
+                detail=detail,
+            ))
 
     # turnInfo: ターン番号とアクティブプレイヤーを更新
     turn_info = gsm.get("turnInfo", {})
