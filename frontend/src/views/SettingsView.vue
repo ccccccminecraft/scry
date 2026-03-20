@@ -64,6 +64,8 @@
     </div>
     <div class="settings__section">
       <div class="settings__section-title">カード名データベース（MTGA）</div>
+
+      <div class="settings__subsection-title">Scryfall データ同期</div>
       <div class="settings__row">
         <button
           class="settings__btn settings__btn--primary"
@@ -77,8 +79,38 @@
         </span>
       </div>
       <p class="settings__note">
-        Scryfall の全カードデータをダウンロードし、MTGAカード名キャッシュを更新します。
-        新セットのカード名が表示されない場合にご利用ください（数十秒かかる場合があります）。
+        Scryfall の全カードデータをダウンロードし、MTGAカード名キャッシュを更新します（数十秒かかる場合があります）。
+        Final Fantasy 以降の新セットは Scryfall に arena_id がないため下の MTGA 公式データをご利用ください。
+      </p>
+
+      <div class="settings__divider" />
+
+      <div class="settings__subsection-title">MTGA 公式カードデータ同期</div>
+      <div class="settings__row">
+        <input
+          v-model="mtgaFolderInput"
+          type="text"
+          class="settings__input"
+          placeholder="フォルダパスを入力または右のボタンで選択"
+        />
+        <button class="settings__btn" @click="handleSelectMtgaFolder">参照...</button>
+        <button class="settings__btn settings__btn--primary" :disabled="!mtgaFolderInput.trim()" @click="handleSaveMtgaFolder">保存</button>
+      </div>
+      <div class="settings__row">
+        <button
+          class="settings__btn settings__btn--primary"
+          :disabled="mtgaSyncing || !mtgaFolderSaved"
+          @click="handleSyncMtgaCards"
+        >
+          {{ mtgaSyncing ? '同期中...' : 'MTGAデータを同期' }}
+        </button>
+        <span v-if="mtgaLastSyncedAt" class="settings__note" style="margin-top: 0;">
+          最終同期: {{ mtgaLastSyncedAt }}
+        </span>
+      </div>
+      <p class="settings__note">
+        MTGA インストールフォルダ内の Raw_CardDatabase ファイルを読み込み、カード名キャッシュを更新します。
+        Docker 開発環境では <code>database/</code> フォルダにファイルをコピーして <code>/database</code> を指定してください。
       </p>
     </div>
 
@@ -150,7 +182,7 @@ import { fetchSettings, updateSettings, deleteApiKey } from '../api/settings'
 import { fetchPlayers } from '../api/stats'
 import { downloadBackup, restoreBackup } from '../api/backup'
 import { deleteAllMatches, deleteMatchesByRange, resetDatabase } from '../api/deletion'
-import { getSyncStatus, syncCardNames } from '../api/admin'
+import { getSyncStatus, syncCardNames, getMtgaSyncStatus, setMtgaFolder, syncMtgaCards } from '../api/admin'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import TypeToConfirmDialog from '../components/TypeToConfirmDialog.vue'
 
@@ -174,14 +206,19 @@ const minPlayerMatchesInput = ref(1)
 const minDeckMatchesInput = ref(1)
 const syncing = ref(false)
 const lastSyncedAt = ref<string | null>(null)
+const mtgaFolderInput = ref('')
+const mtgaFolderSaved = ref(false)
+const mtgaSyncing = ref(false)
+const mtgaLastSyncedAt = ref<string | null>(null)
 
 onMounted(async () => {
   try {
-    const [s, players, health, syncStatus] = await Promise.all([
+    const [s, players, health, syncStatus, mtgaStatus] = await Promise.all([
       fetchSettings(),
       fetchPlayers(),
       axios.get('http://localhost:18432/api/health').catch(() => null),
       getSyncStatus().catch(() => null),
+      getMtgaSyncStatus().catch(() => null),
     ])
     configured.value = s.api_key_configured
     playerList.value = players
@@ -191,6 +228,13 @@ onMounted(async () => {
     minDeckMatchesInput.value = s.min_deck_matches ?? 1
     if (syncStatus?.last_synced_at) {
       lastSyncedAt.value = new Date(syncStatus.last_synced_at).toLocaleString('ja-JP')
+    }
+    if (mtgaStatus?.folder) {
+      mtgaFolderInput.value = mtgaStatus.folder
+      mtgaFolderSaved.value = true
+    }
+    if (mtgaStatus?.last_synced_at) {
+      mtgaLastSyncedAt.value = new Date(mtgaStatus.last_synced_at).toLocaleString('ja-JP')
     }
   } catch {
     showError('設定の取得に失敗しました')
@@ -310,6 +354,36 @@ async function onConfirmReset() {
     setTimeout(() => window.location.reload(), 1000)
   } catch {
     showError('リセットに失敗しました')
+  }
+}
+
+async function handleSelectMtgaFolder() {
+  const folder = await window.electronAPI?.selectFolder()
+  if (folder) mtgaFolderInput.value = folder
+}
+
+async function handleSaveMtgaFolder() {
+  const folder = mtgaFolderInput.value.trim()
+  if (!folder) return
+  try {
+    await setMtgaFolder(folder)
+    mtgaFolderSaved.value = true
+    showSuccess('フォルダパスを保存しました')
+  } catch {
+    showError('保存に失敗しました')
+  }
+}
+
+async function handleSyncMtgaCards() {
+  mtgaSyncing.value = true
+  try {
+    const result = await syncMtgaCards()
+    mtgaLastSyncedAt.value = new Date().toLocaleString('ja-JP')
+    showSuccess(`MTGAカード名データを同期しました（${result.synced.toLocaleString()} 件）`)
+  } catch (e: any) {
+    showError(e?.response?.data?.detail || '同期に失敗しました')
+  } finally {
+    mtgaSyncing.value = false
   }
 }
 
@@ -495,5 +569,23 @@ async function removeApiKey() {
 .settings__divider {
   border-top: 1px solid #e0d8c8;
   margin: 8px 0;
+}
+
+.settings__subsection-title {
+  font-size: 12px;
+  font-weight: bold;
+  color: #9a8a75;
+  margin-bottom: 8px;
+  margin-top: 4px;
+}
+
+.settings__folder-path {
+  font-size: 12px;
+  color: #5a5040;
+  font-family: monospace;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

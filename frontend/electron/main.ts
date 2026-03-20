@@ -129,6 +129,14 @@ ipcMain.handle('scan-surveil-folder', (_event, folderPath: string) => {
   return results
 })
 
+// IPC: フォルダ選択（パスのみ返す）
+ipcMain.handle('select-folder', async () => {
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    properties: ['openDirectory'],
+  })
+  return result.canceled ? null : result.filePaths[0]
+})
+
 // IPC: ファイル読み込み
 ipcMain.handle('read-dat-file', (_event, filePath: string) => {
   return fs.readFileSync(filePath)

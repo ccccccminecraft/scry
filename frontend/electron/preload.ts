@@ -18,4 +18,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   readDatFile: (filePath: string): Promise<Buffer> =>
     ipcRenderer.invoke('read-dat-file', filePath),
+
+  selectFolder: (): Promise<string | null> =>
+    ipcRenderer.invoke('select-folder'),
 })
