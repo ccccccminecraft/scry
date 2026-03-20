@@ -29,6 +29,7 @@ class GREGameAction(TypedDict):
     grp_id: int | None          # 主カードの grpId（未解決）
     target_player: str | None   # プレイヤー対象（すでに名前）
     target_grp_id: int | None   # カード対象の grpId（未解決）
+    counter_type: int | None    # counter_type ID（counter_gained のみ。名前は import_service で解決）
 
 
 class GREGame(TypedDict):
@@ -61,6 +62,25 @@ class ParseError(Exception):
 
 
 # ─── 定数 ────────────────────────────────────────────────────────────────────
+
+# アクションログに記録しない counter_type ID
+# P/T カウンター（+1/+1 等）と忠誠カウンターは頻度が高くアクションログに不要
+# counter_type 名は mtga_counter_types テーブルから解決する（gre_parser は ID のみ保持）
+_SKIP_COUNTER_IDS: frozenset[int] = frozenset({
+    1,    # +1/+1
+    2,    # -1/-1
+    7,    # Loyalty（PW 忠誠カウンター）
+    109,  # +1/+2
+    110,  # +0/+1
+    111,  # +0/+2
+    112,  # +1/+0
+    113,  # +2/+2
+    114,  # -0/-1
+    115,  # -0/-2
+    116,  # -1/-0
+    117,  # -2/-1
+    118,  # -2/-2
+})
 
 # 既知のマナ能力 grpId（Surveil parser.py から移植）
 _MANA_ABILITY_GRP_IDS: frozenset[int] = frozenset({
@@ -107,6 +127,8 @@ _EVENT_TO_ACTION: dict[str, str] = {
     "ability_triggered": "trigger",
     "mill":              "mill",
     "damage":            "damage",
+    "counter_gained":    "counter_gained",
+    "counter_lost":      "counter_lost",
 }
 
 
@@ -164,10 +186,11 @@ class _MatchContext:
     players: list[str]
     current_game: int = 0
     games: list[_GameContext] = field(default_factory=list)
-    grp_id_map: dict[int, int] = field(default_factory=dict)    # instanceId → grpId
-    zone_owner: dict[int, int] = field(default_factory=dict)    # zoneId → ownerSeatId
+    grp_id_map: dict[int, int] = field(default_factory=dict)      # instanceId → grpId
+    zone_owner: dict[int, int] = field(default_factory=dict)      # zoneId → ownerSeatId
+    obj_controller: dict[int, int] = field(default_factory=dict)  # instanceId → controllerSeatId
     target_map: dict[int, list[int]] = field(default_factory=dict)  # affectorId → affectedIds
-    obj_name_map: dict[int, str] = field(default_factory=dict)  # grpId → 合成カード名（fallback用）
+    obj_name_map: dict[int, str] = field(default_factory=dict)    # grpId → 合成カード名（fallback用）
 
 
 # ─── エントリーポイント ────────────────────────────────────────────────────────
@@ -284,8 +307,12 @@ def _events_to_actions(
         grp_id: int | None = detail.get("grp_id")
         target_player: str | None = None
         target_grp_id: int | None = None
+        counter_type_id: int | None = None
 
-        if et == "cast":
+        if et in ("counter_gained", "counter_lost"):
+            counter_type_id = detail.get("counter_type")
+
+        elif et == "cast":
             targets = detail.get("targets", [])
             if targets:
                 t = targets[0]
@@ -322,6 +349,7 @@ def _events_to_actions(
             grp_id=grp_id,
             target_player=target_player,
             target_grp_id=target_grp_id,
+            counter_type=counter_type_id,
         ))
 
     return actions
@@ -451,7 +479,7 @@ def _handle_game_state(msg: dict, ctx: _MatchContext) -> None:
         if zone_id is not None and owner is not None:
             ctx.zone_owner[zone_id] = owner
 
-    # gameObjects: instanceId → grpId を累積 / grpId の合成名を登録
+    # gameObjects: instanceId → grpId / controllerSeatId を累積
     for obj in gsm.get("gameObjects", []):
         inst_id = obj.get("instanceId")
         grp_id = obj.get("grpId")
@@ -461,6 +489,9 @@ def _handle_game_state(msg: dict, ctx: _MatchContext) -> None:
                 synth = _synthesize_obj_name(obj)
                 if synth:
                     ctx.obj_name_map[grp_id] = synth
+        controller = obj.get("controllerSeatId")
+        if inst_id is not None and controller is not None:
+            ctx.obj_controller[inst_id] = controller
 
     # turnInfo: ターン番号とアクティブプレイヤーを更新
     turn_info = gsm.get("turnInfo", {})
@@ -523,6 +554,12 @@ def _handle_game_state(msg: dict, ctx: _MatchContext) -> None:
 
         elif "AnnotationType_AbilityInstanceDeleted" in ann_types:
             _handle_ability_deleted(ann, game_ctx, ctx)
+
+        elif "AnnotationType_CounterAdded" in ann_types:
+            _handle_counter_added(ann, game_ctx, ctx)
+
+        elif "AnnotationType_CounterRemoved" in ann_types:
+            _handle_counter_removed(ann, game_ctx, ctx)
 
 
 def _handle_id_changed(ann: dict, ctx: _MatchContext) -> None:
@@ -808,6 +845,96 @@ def _handle_ability_created(
         turn=game_ctx.mtgo_turn_number,
         phase=game_ctx.phase,
         event_type=event_type,
+        detail=detail,
+    ))
+
+
+def _handle_counter_added(ann: dict, game_ctx: _GameContext, ctx: _MatchContext) -> None:
+    """AnnotationType_CounterAdded: カウンター増加をアクションとして記録する。
+
+    P/T カウンター（+1/+1 等）と忠誠カウンターは _SKIP_COUNTER_IDS によりスキップする。
+    それ以外（速度・スタン・エネルギー等）は counter_type ID のまま記録し、
+    import_service が mtga_counter_types テーブルで名前に解決する。
+    """
+    details = ann.get("details", [])
+    counter_type_list = _get_detail_value(details, "counter_type")
+    amount_list = _get_detail_value(details, "transaction_amount")
+    if not counter_type_list:
+        return
+
+    counter_type_id = counter_type_list[0]
+    if counter_type_id in _SKIP_COUNTER_IDS:
+        return
+
+    amount = amount_list[0] if amount_list else 1
+
+    affected_ids = ann.get("affectedIds", [])
+    if not affected_ids:
+        return
+
+    target_inst = affected_ids[0]
+    grp_id = ctx.grp_id_map.get(target_inst)
+
+    controller_seat = ctx.obj_controller.get(target_inst)
+    player_name = _seat_to_name(controller_seat, ctx) if controller_seat is not None else ""
+
+    detail: dict = {"counter_type": counter_type_id, "amount": amount}
+    if player_name:
+        detail["player"] = player_name
+    if grp_id:
+        detail["grp_id"] = grp_id
+    else:
+        detail["instance_id"] = target_inst
+
+    game_ctx.events.append(_EventData(
+        seq=game_ctx.next_seq(),
+        turn=game_ctx.mtgo_turn_number,
+        phase=game_ctx.phase,
+        event_type="counter_gained",
+        detail=detail,
+    ))
+
+
+def _handle_counter_removed(ann: dict, game_ctx: _GameContext, ctx: _MatchContext) -> None:
+    """AnnotationType_CounterRemoved: カウンター除去をアクションとして記録する。
+
+    _handle_counter_added と同じフィルタ・解決ロジックを使用する。
+    """
+    details = ann.get("details", [])
+    counter_type_list = _get_detail_value(details, "counter_type")
+    amount_list = _get_detail_value(details, "transaction_amount")
+    if not counter_type_list:
+        return
+
+    counter_type_id = counter_type_list[0]
+    if counter_type_id in _SKIP_COUNTER_IDS:
+        return
+
+    amount = amount_list[0] if amount_list else 1
+
+    affected_ids = ann.get("affectedIds", [])
+    if not affected_ids:
+        return
+
+    target_inst = affected_ids[0]
+    grp_id = ctx.grp_id_map.get(target_inst)
+
+    controller_seat = ctx.obj_controller.get(target_inst)
+    player_name = _seat_to_name(controller_seat, ctx) if controller_seat is not None else ""
+
+    detail: dict = {"counter_type": counter_type_id, "amount": amount}
+    if player_name:
+        detail["player"] = player_name
+    if grp_id:
+        detail["grp_id"] = grp_id
+    else:
+        detail["instance_id"] = target_inst
+
+    game_ctx.events.append(_EventData(
+        seq=game_ctx.next_seq(),
+        turn=game_ctx.mtgo_turn_number,
+        phase=game_ctx.phase,
+        event_type="counter_lost",
         detail=detail,
     ))
 

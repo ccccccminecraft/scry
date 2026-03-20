@@ -12,7 +12,7 @@ from typing import Literal, TypedDict
 from sqlalchemy.orm import Session
 
 from models.core import Match, MatchPlayer, Game, Mulligan, Action
-from models.cache import MtgaCard
+from models.cache import MtgaCard, MtgaCounterType
 from models.deck import DeckDefinition
 from parser.log_parser import MTGOLogParser, ParseError, ParseResult
 from parser.surveil_parser import (
@@ -471,6 +471,17 @@ class SurveilImportService:
 
         return ImportResult(match_id=match_id, status="imported", format=fmt, reason=None)
 
+    def _build_counter_name_map(self, counter_type_ids: set[int]) -> dict[int, str]:
+        """counter_type ID セットを mtga_counter_types テーブルで名前に解決する。"""
+        if not counter_type_ids:
+            return {}
+        rows = (
+            self._db.query(MtgaCounterType.counter_type_id, MtgaCounterType.name)
+            .filter(MtgaCounterType.counter_type_id.in_(counter_type_ids))
+            .all()
+        )
+        return {r.counter_type_id: r.name for r in rows}
+
     def _convert_gre_result(
         self,
         gre_result: GREParseResult,
@@ -488,6 +499,15 @@ class SurveilImportService:
 
         obj_name_map = gre_result["obj_name_map"]
 
+        # counter_type ID → 名前を一括解決
+        counter_type_ids = {
+            act["counter_type"]
+            for game in gre_result["games"]
+            for act in game["actions"]
+            if act.get("counter_type") is not None
+        }  # counter_gained / counter_lost 両方を含む
+        counter_name_map = self._build_counter_name_map(counter_type_ids)
+
         games: list[SurveilGame] = []
         for game in gre_result["games"]:
             actions: list[SurveilGameAction] = []
@@ -498,8 +518,10 @@ class SurveilImportService:
                     if gid is not None else None
                 )
                 tgid = act["target_grp_id"]
+                ct_id = act.get("counter_type")
                 target_name = (
-                    act["target_player"]
+                    (counter_name_map.get(ct_id, f"counter_{ct_id}") if ct_id is not None else None)
+                    or act["target_player"]
                     or ((name_map.get(tgid) or obj_name_map.get(tgid)) if tgid is not None else None)
                 )
                 actions.append(SurveilGameAction(

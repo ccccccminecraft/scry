@@ -14,6 +14,15 @@ class MtgaCard(Base):
     fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
+class MtgaCounterType(Base):
+    """MTGA counter_type ID → カウンター名のキャッシュ（Raw_CardDatabase の Enums テーブルから同期）。"""
+    __tablename__ = "mtga_counter_types"
+
+    counter_type_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
 class Setting(Base):
     __tablename__ = "settings"
 

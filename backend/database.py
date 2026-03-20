@@ -85,6 +85,9 @@ def init_db() -> None:
                 conn.execute(text("ALTER TABLE mtga_cards ADD COLUMN expansion_code TEXT"))
                 conn.commit()
 
+        # mtga_counter_types: 新規テーブル（create_all で自動作成されるため migration 不要）
+        # ※ 既存 DB との互換性のため init_db で create_all を呼ぶことで対応済み
+
         # matches: source 列の追加
         if "matches" in inspector.get_table_names():
             cols = {c["name"] for c in inspector.get_columns("matches")}

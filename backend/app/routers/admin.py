@@ -20,7 +20,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models.cache import Setting
+from models.cache import Setting, MtgaCounterType
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -96,26 +96,31 @@ def sync_mtga_cards(db: Session = Depends(get_db)):
     logger.info("MTGA CardDatabase sync: %s", db_path)
 
     try:
-        count = _sync_from_mtga_db(db_path, db)
+        card_count, counter_count = _sync_from_mtga_db(db_path, db)
         db.commit()
-        return {"synced": count, "source": db_path.name}
+        return {"synced": card_count, "counters_synced": counter_count, "source": db_path.name}
     except Exception as e:
         db.rollback()
         logger.error("MTGA CardDatabase sync failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _sync_from_mtga_db(db_path: Path, db: Session) -> int:
+def _sync_from_mtga_db(db_path: Path, db: Session) -> tuple[int, int]:
     """
-    MTGA の Raw_CardDatabase SQLite から GrpId → カード名を抽出して mtga_cards に upsert する。
+    MTGA の Raw_CardDatabase SQLite からカード名とカウンター種別名を抽出して upsert する。
 
+    カード名:
     - Formatted=1 の Localizations_enUS を使用（新旧セット両対応）
     - <nobr> 等の HTML タグを除去して純粋なカード名にする
     - IsPrimaryCard=1 のみ対象（トークン等の派生カードを除外）
+
+    カウンター種別:
+    - Enums テーブルの Type='CounterType' を Localizations_enUS と結合して取得
+    - 同様に Formatted=1 + タグ除去で正規化
     """
     conn = _sqlite3.connect(str(db_path))
     try:
-        cur = conn.execute(
+        card_rows = conn.execute(
             """
             SELECT c.GrpId, l.Loc, c.ExpansionCode
             FROM Cards c
@@ -123,28 +128,56 @@ def _sync_from_mtga_db(db_path: Path, db: Session) -> int:
             WHERE l.Formatted = 1
               AND c.IsPrimaryCard = 1
             """
-        )
-        rows = cur.fetchall()
+        ).fetchall()
+
+        counter_rows = conn.execute(
+            """
+            SELECT e.Value, l.Loc
+            FROM Enums e
+            JOIN Localizations_enUS l ON e.LocId = l.LocId
+            WHERE e.Type = 'CounterType'
+              AND l.Formatted = 1
+            """
+        ).fetchall()
     finally:
         conn.close()
 
     now = datetime.now(timezone.utc).isoformat()
+
+    # ── カード名 upsert ──────────────────────────────────────────────────────────
     arena_map: dict[int, tuple[str, str]] = {}  # arena_id → (card_name, expansion_code)
-    for grp_id, raw_name, expansion_code in rows:
+    for grp_id, raw_name, expansion_code in card_rows:
         name = _TAG_RE.sub("", raw_name).strip()
         if name:
             arena_map[grp_id] = (name, expansion_code or "")
 
-    upsert_rows = [
-        {"arena_id": aid, "card_name": name, "expansion_code": exp, "fetched_at": now}
-        for aid, (name, exp) in arena_map.items()
-    ]
     db.execute(
         text(
             "INSERT OR REPLACE INTO mtga_cards (arena_id, card_name, expansion_code, fetched_at)"
             " VALUES (:arena_id, :card_name, :expansion_code, :fetched_at)"
         ),
-        upsert_rows,
+        [
+            {"arena_id": aid, "card_name": name, "expansion_code": exp, "fetched_at": now}
+            for aid, (name, exp) in arena_map.items()
+        ],
+    )
+
+    # ── カウンター種別 upsert ────────────────────────────────────────────────────
+    counter_map: dict[int, str] = {}  # counter_type_id → name
+    for counter_type_id, raw_name in counter_rows:
+        name = _TAG_RE.sub("", raw_name).strip()
+        if name and counter_type_id not in counter_map:  # 重複は先勝ち
+            counter_map[counter_type_id] = name
+
+    db.execute(
+        text(
+            "INSERT OR REPLACE INTO mtga_counter_types (counter_type_id, name, fetched_at)"
+            " VALUES (:counter_type_id, :name, :fetched_at)"
+        ),
+        [
+            {"counter_type_id": cid, "name": name, "fetched_at": now}
+            for cid, name in counter_map.items()
+        ],
     )
 
     # 同期日時を settings に保存
@@ -155,5 +188,8 @@ def _sync_from_mtga_db(db_path: Path, db: Session) -> int:
         db.add(Setting(key=_MTGA_SYNC_KEY, value=now))
     db.flush()
 
-    logger.info("MTGA CardDatabase sync completed: %d cards upserted", len(arena_map))
-    return len(arena_map)
+    logger.info(
+        "MTGA CardDatabase sync completed: %d cards, %d counter types upserted",
+        len(arena_map), len(counter_map),
+    )
+    return len(arena_map), len(counter_map)

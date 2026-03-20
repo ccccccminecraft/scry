@@ -34,6 +34,8 @@ const ACTION_LABELS: Record<string, string> = {
   mill:           'ミル',
   damage:         'ダメージ',
   reveal:         '公開',
+  counter_gained: 'カウンター追加',
+  counter_lost:   'カウンター除去',
   add_counter:    'カウンター追加',
   remove_counter: 'カウンター除去',
   mulligan:       'マリガン',
