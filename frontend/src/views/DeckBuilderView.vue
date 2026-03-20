@@ -304,7 +304,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted, watch } from 'vue'
+import { ref, computed, reactive, onMounted, onUnmounted, watch } from 'vue'
 
 defineOptions({ name: 'DeckBuilderView' })
 import { useToast } from '../composables/useToast'
@@ -409,6 +409,38 @@ const canSaveVersion = computed(() => {
 onMounted(async () => {
   await loadDecks()
 })
+
+// 画像ポーリング: scryfall_id が null のカードがある間、定期的に再取得する
+const pollTimer = ref<ReturnType<typeof setInterval> | null>(null)
+
+function hasPendingImages(v: typeof selectedVersion.value): boolean {
+  if (!v) return false
+  return [...v.main, ...v.sideboard].some(c => c.scryfall_id === null)
+}
+
+function stopPoll() {
+  if (pollTimer.value !== null) {
+    clearInterval(pollTimer.value)
+    pollTimer.value = null
+  }
+}
+
+watch(selectedVersion, (v) => {
+  stopPoll()
+  if (!v || !hasPendingImages(v)) return
+  const deckId = selectedDeck.value!.id
+  const versionId = v.id
+  pollTimer.value = setInterval(async () => {
+    if (selectedVersion.value?.id !== versionId) { stopPoll(); return }
+    try {
+      const updated = await fetchVersion(deckId, versionId)
+      selectedVersion.value = updated
+      if (!hasPendingImages(updated)) stopPoll()
+    } catch { stopPoll() }
+  }, 2000)
+})
+
+onUnmounted(stopPoll)
 
 async function loadDecks() {
   try {
