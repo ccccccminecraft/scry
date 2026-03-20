@@ -1,5 +1,5 @@
 from models.core import Match, MatchPlayer, Game, Mulligan, Action
-from models.cache import Setting, CardLegality
+from models.cache import Setting, CardLegality, MtgaCard
 from models.analysis import (
     PromptTemplate,
     QuestionSet,
@@ -18,6 +18,7 @@ __all__ = [
     "Action",
     "Setting",
     "CardLegality",
+    "MtgaCard",
     "PromptTemplate",
     "QuestionSet",
     "QuestionItem",

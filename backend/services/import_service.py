@@ -1,6 +1,6 @@
 """
 ImportService - .dat ファイルのパース・DB 保存・フォーマット推定を行う。
-SurveilImportService - Surveil JSON (MTGA) のパース・DB 保存を行う。
+SurveilImportService - Surveil 出力ファイル (MTGA) のパース・DB 保存を行う。
 """
 from __future__ import annotations
 
@@ -16,9 +16,16 @@ from models.deck import DeckDefinition
 from parser.log_parser import MTGOLogParser, ParseError, ParseResult
 from parser.surveil_parser import (
     SurveilParseResult,
+    SurveilGame,
+    SurveilGameAction,
     ParseError as SurveilParseError,
     get_non_basic_card_names,
     parse_surveil_json,
+)
+from parser.gre_parser import (
+    GREParseResult,
+    ParseError as GREParseError,
+    parse_gre_json,
 )
 from services.scryfall_client import ScryfallClient
 
@@ -270,10 +277,10 @@ def _detect_deck(
     return best_name
 
 
-# ─── Surveil JSON インポート ───────────────────────────────────────────────────
+# ─── Surveil インポート ────────────────────────────────────────────────────────
 
 class SurveilImportService:
-    """Surveil JSON (MTGA) のパース・DB 保存・フォーマット推定を担う。"""
+    """Surveil 出力ファイル (MTGA) のパース・DB 保存・フォーマット推定を担う。"""
 
     def __init__(self, db: Session) -> None:
         self._db = db
@@ -281,13 +288,17 @@ class SurveilImportService:
 
     def import_one(self, data: dict, filename: str) -> ImportResult:
         """
-        Surveil JSON dict を受け取りパース・保存する。
+        Surveil 出力ファイルをデシリアライズした dict を受け取りパース・保存する。
+        schema_version=2 と schema_version=3 の両方に対応する。
 
         Returns
         -------
         ImportResult
             status が "imported" / "skipped" / "error" のいずれか
         """
+        if data.get("schema_version") == 3:
+            return self._import_v3(data, filename)
+
         try:
             parsed = parse_surveil_json(data)
         except SurveilParseError as e:
@@ -385,6 +396,108 @@ class SurveilImportService:
                 ))
 
             self._db.flush()
+
+    def _import_v3(self, data: dict, filename: str) -> ImportResult:
+        """schema_version=3（GRE メッセージ形式）のインポート処理。"""
+        try:
+            gre_result = parse_gre_json(data)
+        except GREParseError as e:
+            logger.warning("GREParseError for %s: %s", filename, e)
+            return ImportResult(match_id="", status="error", format=None, reason=str(e))
+
+        match_id = gre_result["match_id"]
+        if self._db.get(Match, match_id) is not None:
+            return ImportResult(
+                match_id=match_id, status="skipped", format=None, reason="already imported"
+            )
+
+        try:
+            # grpId を一括解決
+            name_map = self._scryfall.fetch_by_arena_ids(list(gre_result["all_grp_ids"]))
+            parsed = self._convert_gre_result(gre_result, name_map)
+
+            self._save(parsed)
+            fmt = self._infer_format_from_deck(parsed["deck_main"])
+            match = self._db.get(Match, match_id)
+            match.format = fmt
+
+            used_cards = set(parsed["deck_main"].keys())
+            for mp in match.players:
+                if mp.player_name == parsed["self_player"]:
+                    refined = _detect_deck(self._db, mp.player_name, used_cards, fmt)
+                    if refined is not None:
+                        mp.deck_name = refined
+
+            self._db.commit()
+        except Exception as e:
+            self._db.rollback()
+            logger.exception("GRE import failed for %s: %s", filename, e)
+            return ImportResult(match_id=match_id, status="error", format=None, reason=str(e))
+
+        return ImportResult(match_id=match_id, status="imported", format=fmt, reason=None)
+
+    def _convert_gre_result(
+        self,
+        gre_result: GREParseResult,
+        name_map: dict[int, str],
+    ) -> SurveilParseResult:
+        """GREParseResult + name_map → SurveilParseResult（既存の _save() で使える形式）。"""
+        from collections import Counter
+
+        deck_counts: dict[str, int] = dict(Counter(
+            name_map[g] for g in gre_result["deck_grp_ids"] if g in name_map
+        ))
+        sb_counts: dict[str, int] = dict(Counter(
+            name_map[g] for g in gre_result["sideboard_grp_ids"] if g in name_map
+        ))
+
+        obj_name_map = gre_result["obj_name_map"]
+
+        games: list[SurveilGame] = []
+        for game in gre_result["games"]:
+            actions: list[SurveilGameAction] = []
+            for act in game["actions"]:
+                gid = act["grp_id"]
+                card_name = (
+                    (name_map.get(gid) or obj_name_map.get(gid))
+                    if gid is not None else None
+                )
+                tgid = act["target_grp_id"]
+                target_name = (
+                    act["target_player"]
+                    or ((name_map.get(tgid) or obj_name_map.get(tgid)) if tgid is not None else None)
+                )
+                actions.append(SurveilGameAction(
+                    turn=act["turn"],
+                    phase=act["phase"],
+                    active_player=act["active_player"],
+                    player=act["player"],
+                    action_type=act["action_type"],
+                    card_name=card_name,
+                    target_name=target_name,
+                    sequence=act["seq"],
+                ))
+            games.append(SurveilGame(
+                game_number=game["game_number"],
+                winner=game["winner"],
+                turns=game["turns"],
+                first_player=game["first_player"],
+                mulligans=game["mulligans"],
+                actions=actions,
+            ))
+
+        return SurveilParseResult(
+            match_id=gre_result["match_id"],
+            source="mtga",
+            players=gre_result["players"],
+            self_seat_id=gre_result["self_seat_id"],
+            self_player=gre_result["self_player"],
+            match_winner=gre_result["match_winner"],
+            played_at=gre_result["played_at"],
+            deck_main=deck_counts,
+            deck_sideboard=sb_counts,
+            games=games,
+        )
 
     def _infer_format_from_deck(self, deck_main: dict[str, int]) -> str:
         """

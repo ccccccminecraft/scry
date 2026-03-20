@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import httpx
 from sqlalchemy.orm import Session
 
-from models.cache import CardLegality
+from models.cache import CardLegality, MtgaCard
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +91,71 @@ class ScryfallClient:
             vintage=legalities.get("vintage", "not_legal"),
             fetched_at=datetime.now(tz=timezone.utc),
         )
+
+    def fetch_by_arena_ids(self, arena_ids: list[int]) -> dict[int, str]:
+        """
+        MTGA arena_id（grpId）のリストからカード名を返す。
+
+        キャッシュ済み分は DB から取得し、未キャッシュ分のみ
+        Scryfall POST /cards/collection（最大 75 件/バッチ）で取得する。
+
+        Returns
+        -------
+        dict[int, str]
+            arena_id → card_name のマップ。取得できなかった ID は含まれない。
+        """
+        if not arena_ids:
+            return {}
+
+        unique_ids = list(set(arena_ids))
+
+        # キャッシュ済みを一括取得
+        cached = (
+            self._db.query(MtgaCard)
+            .filter(MtgaCard.arena_id.in_(unique_ids))
+            .all()
+        )
+        result: dict[int, str] = {c.arena_id: c.card_name for c in cached}
+
+        # 未キャッシュ分を個別取得（GET /cards/arena/{id}）
+        uncached = [aid for aid in unique_ids if aid not in result]
+        for arena_id in uncached:
+            name = self._fetch_one_by_arena_id(arena_id)
+            if name:
+                self._db.add(MtgaCard(
+                    arena_id=arena_id,
+                    card_name=name,
+                    fetched_at=datetime.now(timezone.utc),
+                ))
+                result[arena_id] = name
+
+        if uncached:
+            self._db.flush()
+
+        return result
+
+    def _fetch_one_by_arena_id(self, arena_id: int) -> str | None:
+        """
+        GET /cards/arena/{id} で MTGA arena_id（grpId）からカード名を1件取得する。
+        失敗時（404・タイムアウト等）は None を返す。
+        """
+        self._rate_limit()
+        url = f"{SCRYFALL_BASE}/cards/arena/{arena_id}"
+        try:
+            response = httpx.get(url, timeout=REQUEST_TIMEOUT)
+            if response.status_code == 404:
+                logger.debug("Scryfall: arena_id=%d not found", arena_id)
+                return None
+            if response.status_code == 429:
+                retry_after = int(response.headers.get("Retry-After", "2"))
+                logger.warning("Scryfall rate limited, waiting %ds", retry_after)
+                time.sleep(retry_after)
+                response = httpx.get(url, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
+            return response.json().get("name")
+        except Exception as e:
+            logger.warning("Scryfall arena lookup failed for %d: %s", arena_id, e)
+            return None
 
     def _rate_limit(self) -> None:
         """前回リクエストから 100ms 未満なら sleep して待機する。"""
