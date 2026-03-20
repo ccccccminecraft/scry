@@ -63,6 +63,26 @@
       </p>
     </div>
     <div class="settings__section">
+      <div class="settings__section-title">カード名データベース（MTGA）</div>
+      <div class="settings__row">
+        <button
+          class="settings__btn settings__btn--primary"
+          :disabled="syncing"
+          @click="handleSyncCardNames"
+        >
+          {{ syncing ? '同期中...' : 'Scryfallデータを同期' }}
+        </button>
+        <span v-if="lastSyncedAt" class="settings__note" style="margin-top: 0;">
+          最終同期: {{ lastSyncedAt }}
+        </span>
+      </div>
+      <p class="settings__note">
+        Scryfall の全カードデータをダウンロードし、MTGAカード名キャッシュを更新します。
+        新セットのカード名が表示されない場合にご利用ください（数十秒かかる場合があります）。
+      </p>
+    </div>
+
+    <div class="settings__section">
       <div class="settings__section-title">データベース</div>
       <div class="settings__row">
         <button class="settings__btn settings__btn--primary" @click="handleDownloadBackup">バックアップをダウンロード</button>
@@ -130,6 +150,7 @@ import { fetchSettings, updateSettings, deleteApiKey } from '../api/settings'
 import { fetchPlayers } from '../api/stats'
 import { downloadBackup, restoreBackup } from '../api/backup'
 import { deleteAllMatches, deleteMatchesByRange, resetDatabase } from '../api/deletion'
+import { getSyncStatus, syncCardNames } from '../api/admin'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import TypeToConfirmDialog from '../components/TypeToConfirmDialog.vue'
 
@@ -151,13 +172,16 @@ const defaultPlayerInput = ref('')
 const appVersion = ref('')
 const minPlayerMatchesInput = ref(1)
 const minDeckMatchesInput = ref(1)
+const syncing = ref(false)
+const lastSyncedAt = ref<string | null>(null)
 
 onMounted(async () => {
   try {
-    const [s, players, health] = await Promise.all([
+    const [s, players, health, syncStatus] = await Promise.all([
       fetchSettings(),
       fetchPlayers(),
       axios.get('http://localhost:18432/api/health').catch(() => null),
+      getSyncStatus().catch(() => null),
     ])
     configured.value = s.api_key_configured
     playerList.value = players
@@ -165,6 +189,9 @@ onMounted(async () => {
     appVersion.value = health?.data?.version ?? ''
     minPlayerMatchesInput.value = s.min_player_matches ?? 1
     minDeckMatchesInput.value = s.min_deck_matches ?? 1
+    if (syncStatus?.last_synced_at) {
+      lastSyncedAt.value = new Date(syncStatus.last_synced_at).toLocaleString('ja-JP')
+    }
   } catch {
     showError('設定の取得に失敗しました')
   }
@@ -283,6 +310,19 @@ async function onConfirmReset() {
     setTimeout(() => window.location.reload(), 1000)
   } catch {
     showError('リセットに失敗しました')
+  }
+}
+
+async function handleSyncCardNames() {
+  syncing.value = true
+  try {
+    const result = await syncCardNames()
+    lastSyncedAt.value = new Date().toLocaleString('ja-JP')
+    showSuccess(`カード名データを同期しました（${result.synced.toLocaleString()} 件）`)
+  } catch {
+    showError('同期に失敗しました')
+  } finally {
+    syncing.value = false
   }
 }
 
