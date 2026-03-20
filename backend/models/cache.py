@@ -10,6 +10,7 @@ class MtgaCard(Base):
 
     arena_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     card_name: Mapped[str] = mapped_column(Text, nullable=False)
+    expansion_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 

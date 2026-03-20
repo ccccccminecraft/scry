@@ -12,6 +12,7 @@ from typing import Literal, TypedDict
 from sqlalchemy.orm import Session
 
 from models.core import Match, MatchPlayer, Game, Mulligan, Action
+from models.cache import MtgaCard
 from models.deck import DeckDefinition
 from parser.log_parser import MTGOLogParser, ParseError, ParseResult
 from parser.surveil_parser import (
@@ -35,6 +36,32 @@ FORMAT_PRIORITY = ["standard", "pioneer", "modern", "pauper", "legacy", "vintage
 
 # MTGA は Standard / Pioneer のみ対応（Modern 以下は存在しない）
 MTGA_FORMAT_PRIORITY = ["standard", "pioneer"]
+
+# これらのセットコードを持つカードは Pioneer 非合法（Historic / Modern 専用）
+_MTGA_NON_PIONEER_SETS = frozenset({
+    # Historic Anthologies: Pioneer 以前のカードを MTGA に追加するためのセット
+    "HA1", "HA2", "HA3", "HA4", "HA5", "HA6",
+    # Modern Horizons: Modern 専用セット（Pioneer 非合法）
+    "MH1", "MH2", "MH3",
+})
+
+# 現在のスタンダードに含まれるセットコード
+# NOTE: スタンダードローテーション（毎年9月頃）に合わせて更新すること。
+#       リストにないセットのカードは "pioneer" と判定される（誤判定ではなく保守的な推定）。
+_MTGA_STANDARD_SETS = frozenset({
+    "WOE",  # Wilds of Eldraine (Sep 2023)
+    "LCI",  # The Lost Caverns of Ixalan (Nov 2023)
+    "MKM",  # Murders at Karlov Manor (Feb 2024)
+    "OTJ",  # Outlaws of Thunder Junction (Apr 2024)
+    "BLB",  # Bloomburrow (Aug 2024)
+    "DSK",  # Duskmourn: House of Horror (Sep 2024)
+    "FDN",  # Foundations (Nov 2024) - 3年間スタンダード残留予定
+    # 2025 年以降のセット（knowledge cutoff 以降 - ローテーションに合わせて追加・削除）
+    "EOE",  # Aetherdrift (2025)
+    "FIN",  # Final Fantasy (2025)
+    "ECL",  # Lorwyn Eclipsed (2025)
+    "TMT",  # Teenage Mutant Ninja Turtles (2025)
+})
 
 # banned カードは試合当時は合法だった可能性が高いため legal 扱いにする
 _LEGAL_STATUSES = {"legal", "banned"}
@@ -420,7 +447,10 @@ class SurveilImportService:
             parsed = self._convert_gre_result(gre_result, name_map)
 
             self._save(parsed)
-            fmt = self._infer_format_from_deck(parsed["deck_main"])
+            # expansion_code ベースのフォーマット判定（mtga_cards 未同期時は Scryfall fallback）
+            fmt = self._infer_format_from_grp_ids(gre_result["deck_grp_ids"])
+            if fmt is None:
+                fmt = self._infer_format_from_deck(parsed["deck_main"])
             match = self._db.get(Match, match_id)
             match.format = fmt
 
@@ -501,6 +531,51 @@ class SurveilImportService:
             deck_sideboard=sb_counts,
             games=games,
         )
+
+    def _infer_format_from_grp_ids(self, deck_grp_ids: list[int]) -> str | None:
+        """
+        MTGA arena_id (grpId) リストから expansion_code ベースでフォーマットを判定する。
+
+        mtga_cards が未同期（データなし）または全カードを解決できない場合は None を返し、
+        呼び出し元が Scryfall fallback に切り替える。
+
+        判定ロジック:
+          1. 60 枚未満 → Limited とみなして "unknown"
+          2. _MTGA_NON_PIONEER_SETS のカードが含まれる → "unknown" (Historic/Alchemy)
+          3. 全カードが _MTGA_STANDARD_SETS 由来 → "standard"
+          4. それ以外（Pioneer-legal）→ "pioneer"
+        """
+        if len(deck_grp_ids) < 60:
+            return "unknown"
+
+        unique_ids = list(set(deck_grp_ids))
+        rows = (
+            self._db.query(MtgaCard.arena_id, MtgaCard.expansion_code)
+            .filter(MtgaCard.arena_id.in_(unique_ids))
+            .all()
+        )
+
+        if not rows:
+            return None  # mtga_cards 未同期 → Scryfall fallback
+
+        id_to_code: dict[int, str | None] = {r.arena_id: r.expansion_code for r in rows}
+
+        # 全カードが解決できない場合は Scryfall fallback
+        if not all(aid in id_to_code for aid in unique_ids):
+            return None
+
+        codes = {code for code in id_to_code.values() if code}
+
+        # Non-Pioneer セットのカードが含まれる → Historic / Alchemy
+        if codes & _MTGA_NON_PIONEER_SETS:
+            return "unknown"
+
+        # 全カードが Standard セット由来 → standard
+        if codes and codes <= _MTGA_STANDARD_SETS:
+            return "standard"
+
+        # Pioneer-legal → pioneer
+        return "pioneer"
 
     def _infer_format_from_deck(self, deck_main: dict[str, int]) -> str:
         """

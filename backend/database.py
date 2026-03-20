@@ -78,6 +78,13 @@ def init_db() -> None:
                 conn.execute(text("ALTER TABLE deck_versions ADD COLUMN is_archived BOOLEAN NOT NULL DEFAULT 0"))
                 conn.commit()
 
+        # mtga_cards: expansion_code 列の追加
+        if "mtga_cards" in inspector.get_table_names():
+            cols = {c["name"] for c in inspector.get_columns("mtga_cards")}
+            if "expansion_code" not in cols:
+                conn.execute(text("ALTER TABLE mtga_cards ADD COLUMN expansion_code TEXT"))
+                conn.commit()
+
         # matches: source 列の追加
         if "matches" in inspector.get_table_names():
             cols = {c["name"] for c in inspector.get_columns("matches")}

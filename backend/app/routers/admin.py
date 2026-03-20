@@ -117,7 +117,7 @@ def _sync_from_mtga_db(db_path: Path, db: Session) -> int:
     try:
         cur = conn.execute(
             """
-            SELECT c.GrpId, l.Loc
+            SELECT c.GrpId, l.Loc, c.ExpansionCode
             FROM Cards c
             JOIN Localizations_enUS l ON c.TitleId = l.LocId
             WHERE l.Formatted = 1
@@ -129,20 +129,20 @@ def _sync_from_mtga_db(db_path: Path, db: Session) -> int:
         conn.close()
 
     now = datetime.now(timezone.utc).isoformat()
-    arena_map: dict[int, str] = {}
-    for grp_id, raw_name in rows:
+    arena_map: dict[int, tuple[str, str]] = {}  # arena_id → (card_name, expansion_code)
+    for grp_id, raw_name, expansion_code in rows:
         name = _TAG_RE.sub("", raw_name).strip()
         if name:
-            arena_map[grp_id] = name
+            arena_map[grp_id] = (name, expansion_code or "")
 
     upsert_rows = [
-        {"arena_id": aid, "card_name": name, "fetched_at": now}
-        for aid, name in arena_map.items()
+        {"arena_id": aid, "card_name": name, "expansion_code": exp, "fetched_at": now}
+        for aid, (name, exp) in arena_map.items()
     ]
     db.execute(
         text(
-            "INSERT OR REPLACE INTO mtga_cards (arena_id, card_name, fetched_at)"
-            " VALUES (:arena_id, :card_name, :fetched_at)"
+            "INSERT OR REPLACE INTO mtga_cards (arena_id, card_name, expansion_code, fetched_at)"
+            " VALUES (:arena_id, :card_name, :expansion_code, :fetched_at)"
         ),
         upsert_rows,
     )
