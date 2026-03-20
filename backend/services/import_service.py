@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from models.core import Match, MatchPlayer, Game, Mulligan, Action
 from models.cache import MtgaCard, MtgaCounterType
 from models.deck import DeckDefinition
+from models.decklist import Card, Deck, DeckVersion, DeckVersionCard
 from parser.log_parser import MTGOLogParser, ParseError, ParseResult
 from parser.surveil_parser import (
     SurveilParseResult,
@@ -463,6 +464,21 @@ class SurveilImportService:
                     if refined is not None:
                         mp.deck_name = refined
 
+            # デッキ自動同期: EventSetDeckV2 のデッキ名が取得できている場合のみ
+            deck_name = gre_result.get("deck_name")
+            if deck_name:
+                version = self._sync_deck_from_import(
+                    deck_name=deck_name,
+                    deck_main=parsed["deck_main"],
+                    deck_sideboard=parsed["deck_sideboard"],
+                    played_at=gre_result["played_at"],
+                    fmt=fmt,
+                )
+                if version is not None:
+                    for mp in match.players:
+                        if mp.player_name == parsed["self_player"]:
+                            mp.deck_version_id = version.id
+
             self._db.commit()
         except Exception as e:
             self._db.rollback()
@@ -555,6 +571,124 @@ class SurveilImportService:
             deck_sideboard=sb_counts,
             games=games,
         )
+
+    def _sync_deck_from_import(
+        self,
+        deck_name: str,
+        deck_main: dict[str, int],
+        deck_sideboard: dict[str, int],
+        played_at: datetime,
+        fmt: str | None,
+    ) -> DeckVersion | None:
+        """
+        MTGA インポート時にデッキ管理へ自動同期する。
+
+        - 同名デッキが存在しない → 新規 Deck + DeckVersion を作成
+        - 同名デッキあり、最新バージョンと同一リスト → スキップ（最新バージョンを返す）
+        - 同名デッキあり、リストが異なる → 新バージョンを追加
+
+        Returns
+        -------
+        DeckVersion | None
+            作成または既存の DeckVersion。エラー時は None。
+        """
+        try:
+            # カード集合（比較用）: frozenset of (name, quantity, is_sideboard)
+            incoming: frozenset[tuple[str, int, bool]] = frozenset(
+                (name, qty, False) for name, qty in deck_main.items() if name
+            ) | frozenset(
+                (name, qty, True) for name, qty in deck_sideboard.items() if name
+            )
+
+            deck = (
+                self._db.query(Deck)
+                .filter(Deck.name == deck_name, Deck.is_archived.is_(False))
+                .first()
+            )
+
+            if deck is not None:
+                # 最新バージョンのカードリストと比較
+                latest = (
+                    self._db.query(DeckVersion)
+                    .filter(DeckVersion.deck_id == deck.id, DeckVersion.is_archived.is_(False))
+                    .order_by(DeckVersion.version_number.desc())
+                    .first()
+                )
+                if latest is not None:
+                    existing: frozenset[tuple[str, int, bool]] = frozenset(
+                        (dvc.card.name, dvc.quantity, dvc.is_sideboard)
+                        for dvc in latest.cards
+                    )
+                    if existing == incoming:
+                        logger.debug("Deck sync: skipped (same list) for '%s'", deck_name)
+                        return latest
+                    next_version_number = latest.version_number + 1
+                else:
+                    next_version_number = 1
+            else:
+                deck = Deck(
+                    name=deck_name,
+                    format=fmt if fmt and fmt != "unknown" else None,
+                    created_at=played_at,
+                )
+                self._db.add(deck)
+                self._db.flush()
+                next_version_number = 1
+
+            # 新バージョン作成
+            version = DeckVersion(
+                deck_id=deck.id,
+                version_number=next_version_number,
+                registered_at=played_at,
+            )
+            self._db.add(version)
+            self._db.flush()
+
+            # カードを登録
+            for card_name, qty in deck_main.items():
+                if not card_name:
+                    continue
+                card = self._get_or_create_card(card_name)
+                self._db.add(DeckVersionCard(
+                    deck_version_id=version.id,
+                    card_id=card.id,
+                    quantity=qty,
+                    is_sideboard=False,
+                ))
+            for card_name, qty in deck_sideboard.items():
+                if not card_name:
+                    continue
+                card = self._get_or_create_card(card_name)
+                self._db.add(DeckVersionCard(
+                    deck_version_id=version.id,
+                    card_id=card.id,
+                    quantity=qty,
+                    is_sideboard=True,
+                ))
+            self._db.flush()
+
+            logger.info(
+                "Deck sync: '%s' v%d created (%d main, %d side)",
+                deck_name, next_version_number, len(deck_main), len(deck_sideboard),
+            )
+            return version
+
+        except Exception:
+            logger.exception("Deck sync failed for '%s'", deck_name)
+            return None
+
+    def _get_or_create_card(self, card_name: str) -> Card:
+        """cards テーブルからカードを取得または新規作成する（mtgo_id=None 版）。"""
+        card = (
+            self._db.query(Card)
+            .filter(Card.name == card_name, Card.mtgo_id.is_(None))
+            .first()
+        )
+        if card is None:
+            card = Card(name=card_name)
+            self._db.add(card)
+            self._db.flush()
+        return card
 
     def _format_from_event_name(self, event_name: str | None) -> str | None:
         """
