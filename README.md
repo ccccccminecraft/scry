@@ -78,22 +78,37 @@ npm run dev:electron
 
 > **Windows ホスト上で実行する**（WSL2 では Windows 向け exe を生成できない）。
 
-### 1. Python バックエンドを exe 化
+### 前提条件
 
 ```bash
-cd backend
 pip install pyinstaller
-pyinstaller --onefile --name backend --collect-all keyring app/main.py
-# → backend/dist/backend.exe が生成される
+cd frontend && npm install --legacy-peer-deps
 ```
 
-### 2. Electron アプリをビルド
+### ビルド実行
+
+`build.py` ですべてのステップを一括実行できる。
 
 ```bash
-cd frontend
-npm run build          # Vite で Vue をビルド
-npm run build:electron # electron-builder で Windows installer を生成
-# → frontend/dist_electron/ScrySetup.exe が生成される
+python build.py
+```
+
+以下の順序で実行される:
+
+| ステップ | 内容 | 出力 |
+|---------|------|------|
+| 1 | PyInstaller でバックエンドを exe 化 | `backend/dist/backend.exe` |
+| 2 | Vite で Vue をビルド | `frontend/dist/` |
+| 3 | electron-builder で Windows インストーラーを生成 | `frontend/dist_electron/ScrySetup.exe` |
+
+### 個別実行
+
+特定のステップだけ実行したい場合:
+
+```bash
+python build.py --backend   # backend.exe のみ
+python build.py --frontend  # Vue ビルドのみ
+python build.py --electron  # インストーラーのみ（他2つが完了済みの前提）
 ```
 
 ---
