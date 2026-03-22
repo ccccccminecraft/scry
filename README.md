@@ -87,29 +87,34 @@ cd frontend && npm install --legacy-peer-deps
 
 ### ビルド実行
 
-`build.py` ですべてのステップを一括実行できる。
+以下の順序で各ステップを実行する。
+
+**ステップ 1: バックエンド (PyInstaller)**
 
 ```bash
-python build.py
+cd backend
+python -m PyInstaller --onefile --name backend --collect-all keyring app/main.py --clean
 ```
 
-以下の順序で実行される:
+出力: `backend/dist/backend.exe`
 
-| ステップ | 内容 | 出力 |
-|---------|------|------|
-| 1 | PyInstaller でバックエンドを exe 化 | `backend/dist/backend.exe` |
-| 2 | Vite で Vue をビルド | `frontend/dist/` |
-| 3 | electron-builder で Windows インストーラーを生成 | `frontend/dist_electron/ScrySetup.exe` |
-
-### 個別実行
-
-特定のステップだけ実行したい場合:
+**ステップ 2: フロントエンド (Vite)**
 
 ```bash
-python build.py --backend   # backend.exe のみ
-python build.py --frontend  # Vue ビルドのみ
-python build.py --electron  # インストーラーのみ（他2つが完了済みの前提）
+cd frontend
+npm run build
 ```
+
+出力: `frontend/dist/`
+
+**ステップ 3: Electron パッケージング**
+
+```bash
+cd frontend
+npm run build:electron
+```
+
+出力: `frontend/dist_electron/ScrySetup.exe`
 
 ---
 
