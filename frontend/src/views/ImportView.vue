@@ -91,6 +91,14 @@
         <p class="dropzone__sub">または</p>
         <button class="btn btn--primary" @click="selectSurveilFile">ファイルを選択</button>
       </div>
+
+      <div class="divider">── または ──</div>
+
+      <div class="folder-area">
+        <button class="btn btn--folder" @click="scanSurveilFolderBulk">
+          📁 フォルダから一括で取り込む
+        </button>
+      </div>
     </template>
 
     <!-- Idle -->
@@ -149,7 +157,7 @@
 
       <div class="folder-area">
         <button class="btn btn--folder" @click="scanFolder">
-          📁 フォルダから一括取り込む
+          📁 フォルダから一括で取り込む
         </button>
         <p class="hint">ヒント: C:\Users\[ユーザー名]\AppData\Local\Apps\2.0</p>
       </div>
@@ -303,6 +311,7 @@ const surveilRunning = ref(false)
 
 // scan result
 const folderPath = ref('')
+const scanMode = ref<'mtgo' | 'mtga'>('mtgo')
 interface ScanFile { path: string; name: string; checked: boolean }
 const scanFiles = ref<ScanFile[]>([])
 
@@ -618,6 +627,35 @@ async function scanFolder() {
       name: p.split(/[\\/]/).pop() ?? p,
       checked: true,
     }))
+    scanMode.value = 'mtgo'
+    state.value = 'scan_result'
+  } catch (e) {
+    showError(e instanceof Error ? e.message : 'フォルダのスキャンに失敗しました')
+    state.value = 'idle'
+  }
+}
+
+async function scanSurveilFolderBulk() {
+  state.value = 'scanning'
+  try {
+    const result = await window.electronAPI.scanFolder()
+    if (!result) {
+      state.value = 'idle'
+      return
+    }
+    const files = await window.electronAPI.scanSurveilFolder(result.folderPath)
+    if (files.length === 0) {
+      showError('.json ファイルが見つかりませんでした')
+      state.value = 'idle'
+      return
+    }
+    folderPath.value = result.folderPath
+    scanFiles.value = files.map(f => ({
+      path: f.path,
+      name: f.name,
+      checked: true,
+    }))
+    scanMode.value = 'mtga'
     state.value = 'scan_result'
   } catch (e) {
     showError(e instanceof Error ? e.message : 'フォルダのスキャンに失敗しました')
@@ -637,7 +675,11 @@ function confirmStartImport() {
 async function startImport() {
   const targets = scanFiles.value.filter(f => f.checked)
   if (targets.length === 0) return
-  await runImport(targets)
+  if (scanMode.value === 'mtga') {
+    await runSurveilImport(targets)
+  } else {
+    await runImport(targets)
+  }
 }
 
 async function runImport(targets: Array<{ path: string; name: string }>) {
