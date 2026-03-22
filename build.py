@@ -49,12 +49,23 @@ def run(cmd: list[str], cwd: Path) -> None:
 
 def build_backend() -> None:
     step("Step 1/3: バックエンド (PyInstaller)")
+    # FastAPI / uvicorn / pydantic 等は動的インポートを含むため --collect-all で明示収集する
+    collect_all_packages = [
+        "fastapi", "uvicorn", "starlette",
+        "pydantic", "pydantic_core",
+        "anyio", "multipart",
+        "sqlalchemy", "aiofiles",
+        "keyring", "anthropic", "openai", "httpx",
+    ]
+    collect_args: list[str] = []
+    for pkg in collect_all_packages:
+        collect_args += ["--collect-all", pkg]
     run(
         [
             sys.executable, "-m", "PyInstaller",
             "--onefile",
             "--name", "backend",
-            "--collect-all", "keyring",
+            *collect_args,
             "app/main.py",
             "--clean",
         ],
