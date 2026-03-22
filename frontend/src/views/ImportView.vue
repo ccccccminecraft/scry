@@ -30,7 +30,7 @@
     <!-- ── MTGA タブ ── -->
     <template v-if="state === 'idle' && activeTab === 'mtga'">
       <div class="quick">
-        <div class="quick__label">Surveil 監視フォルダ</div>
+        <div class="quick__label">登録フォルダ</div>
 
         <!-- フォルダ登録済み -->
         <template v-if="surveilFolder">
@@ -104,9 +104,9 @@
     <!-- Idle -->
     <template v-if="state === 'idle' && activeTab === 'mtgo'">
 
-      <!-- クイックインポート -->
+      <!-- 登録フォルダ -->
       <div class="quick">
-        <div class="quick__label">クイックインポート</div>
+        <div class="quick__label">登録フォルダ</div>
 
         <!-- フォルダ登録済み -->
         <template v-if="quickFolder">
@@ -122,7 +122,7 @@
               :disabled="quickRunning"
               @click="confirmQuickImport"
             >
-              {{ quickRunning ? 'スキャン中...' : '⚡ クイックインポート' }}
+              {{ quickRunning ? 'スキャン中...' : '⚡ 新着を取り込む' }}
             </button>
             <button class="btn" @click="changeFolder">フォルダを変更</button>
             <button class="btn btn--danger" @click="clearQuickFolder" :disabled="quickRunning">解除</button>
@@ -406,7 +406,7 @@ async function saveQuickFolder(path: string) {
 
 function confirmQuickImport() {
   showConfirm(
-    'クイックインポートを実行します。前回インポート以降の新しいファイルをすべて取り込みます。よろしいですか？',
+    '登録フォルダから新着ファイルを取り込みます。前回インポート以降の新しいファイルをすべて対象にします。よろしいですか？',
     runQuickImport,
   )
 }
