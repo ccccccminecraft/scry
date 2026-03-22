@@ -142,6 +142,25 @@ ipcMain.handle('read-dat-file', (_event, filePath: string) => {
   return fs.readFileSync(filePath)
 })
 
+// IPC: MTGA CardDatabase ファイルの mtime を返す（自動同期チェック用）
+ipcMain.handle('get-mtga-cards-mtime', (_event, installFolder: string) => {
+  const rawFolder = path.join(installFolder, 'MTGA_Data', 'Downloads', 'Raw')
+  let entries: string[]
+  try {
+    entries = fs.readdirSync(rawFolder)
+  } catch {
+    return null
+  }
+  const candidates = entries
+    .filter(f => /^Raw_CardDatabase_.*\.mtga$/.test(f))
+    .map(f => {
+      const p = path.join(rawFolder, f)
+      return { path: p, mtime: fs.statSync(p).mtimeMs }
+    })
+    .sort((a, b) => b.mtime - a.mtime)
+  return candidates.length > 0 ? candidates[0].mtime : null
+})
+
 // IPC: MTGA CardDatabase を同期用パスにコピーして返す
 // Dev:  ./database/mtga_sync.mtga にコピー → Docker は /database/mtga_sync.mtga で参照
 // Prod: backend.exe は同一マシンなので元のパスをそのまま返す

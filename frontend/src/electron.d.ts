@@ -7,6 +7,7 @@ interface ElectronAPI {
   readDatFile: (filePath: string) => Promise<Buffer>
   selectFolder: () => Promise<string | null>
   prepareMtgaCardsDb: (installFolder: string) => Promise<string>
+  getMtgaCardsMtime: (installFolder: string) => Promise<number | null>
 }
 
 declare global {

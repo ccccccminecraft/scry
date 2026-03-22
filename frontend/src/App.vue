@@ -22,18 +22,43 @@ import GlobalNav from './components/GlobalNav.vue'
 import AppToast from './components/AppToast.vue'
 import OnboardingWizard from './components/OnboardingWizard.vue'
 import { fetchSettings } from './api/settings'
+import { getMtgaSyncStatus, syncMtgaCards } from './api/admin'
+import { useToast } from './composables/useToast'
 
 const showOnboarding = ref(false)
+const { showSuccess, showError } = useToast()
 
 provide('showOnboarding', showOnboarding)
+
+async function checkAndAutoSyncMtgaCards(): Promise<void> {
+  try {
+    const status = await getMtgaSyncStatus()
+    if (!status.folder) return
+
+    const mtime = await window.electronAPI?.getMtgaCardsMtime(status.folder)
+    if (mtime == null) return
+
+    // ファイルの更新日時が最終同期日時より新しければ自動同期
+    const lastSynced = status.last_synced_at ? new Date(status.last_synced_at).getTime() : 0
+    if (mtime <= lastSynced) return
+
+    showSuccess('MTGAカードデータが更新されています。自動同期中...')
+    const result = await syncMtgaCards(status.folder)
+    showSuccess(`MTGAカードデータを自動同期しました（${result.synced.toLocaleString()} 件）`)
+  } catch { /* 自動同期の失敗は無視 */ }
+}
 
 onMounted(async () => {
   try {
     const settings = await fetchSettings()
     if (!settings.onboarding_completed) {
       showOnboarding.value = true
+      return
     }
   } catch { /* バックエンド未起動時は無視 */ }
+
+  // onboarding 完了済みの場合のみ自動同期チェック
+  checkAndAutoSyncMtgaCards()
 })
 </script>
 
