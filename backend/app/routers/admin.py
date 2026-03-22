@@ -9,13 +9,13 @@ GET  /api/admin/sync-mtga-cards/status - 最終同期日時を返す
 from __future__ import annotations
 
 import logging
-import os
 import re
 import sqlite3 as _sqlite3
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -36,10 +36,6 @@ _TAG_RE = re.compile(r"<[^>]+>")
 
 class FolderInput(BaseModel):
     folder: str
-
-
-class SyncInput(BaseModel):
-    db_path: str
 
 
 @router.get("/admin/mtga-cards-folder")
@@ -73,33 +69,39 @@ def get_mtga_sync_status(db: Session = Depends(get_db)):
 
 
 @router.post("/admin/sync-mtga-cards")
-def sync_mtga_cards(body: SyncInput, db: Session = Depends(get_db)):
+async def sync_mtga_cards(file: UploadFile, db: Session = Depends(get_db)):
     """
-    Electron が準備したファイルパスを受け取り、mtga_cards テーブルを更新する。
-
-    Dev:  Electron が ./database/ にコピーした /database/mtga_sync.mtga を読む
-    Prod: Electron が backend.exe と同一マシン上のパスをそのまま渡す
+    Electron が読んだ MTGA CardDatabase のファイル内容を受け取り、mtga_cards テーブルを更新する。
+    ファイルパスの共有ではなくアップロード方式にすることで、Windows のパス解決の差異を回避する。
     """
-    db_path = Path(body.db_path)
-    if not db_path.is_file():
-        raise HTTPException(status_code=400, detail=f"ファイルが見つかりません: {body.db_path}")
-
-    logger.info("MTGA CardDatabase sync: %s", db_path)
-    is_temp = db_path.name == 'mtga_sync.mtga'
+    content = await file.read()
+    logger.info(
+        "MTGA CardDatabase sync: %d bytes received, first 16: %s",
+        len(content), content[:16].hex() if content else "empty",
+    )
+    _SQLITE_MAGIC = b"SQLite format 3\x00"
+    if len(content) < 16 or content[:16] != _SQLITE_MAGIC:
+        raise HTTPException(
+            status_code=400,
+            detail=f"受信データが SQLite ではありません ({len(content)} バイト, 先頭: {content[:16].hex() if content else 'empty'})",
+        )
+    tmp_path: Path | None = None
     try:
-        card_count, counter_count = _sync_from_mtga_db(db_path, db)
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.mtga') as tmp:
+            tmp.write(content)
+            tmp_path = Path(tmp.name)
+        card_count, counter_count = _sync_from_mtga_db(tmp_path, db)
         db.commit()
-        return {"synced": card_count, "counters_synced": counter_count, "source": db_path.name}
+        return {"synced": card_count, "counters_synced": counter_count, "source": "upload"}
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         logger.error("MTGA CardDatabase sync failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        if is_temp:
-            try:
-                os.unlink(db_path)
-            except Exception:
-                pass
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
 
 
 def _sync_from_mtga_db(db_path: Path, db: Session) -> tuple[int, int]:

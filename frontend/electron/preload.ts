@@ -22,8 +22,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectFolder: (): Promise<string | null> =>
     ipcRenderer.invoke('select-folder'),
 
-  prepareMtgaCardsDb: (installFolder: string): Promise<string> =>
-    ipcRenderer.invoke('prepare-mtga-cards-db', installFolder),
+  syncMtgaCards: (installFolder: string): Promise<{ synced: number; counters_synced: number; source: string }> =>
+    ipcRenderer.invoke('sync-mtga-cards', installFolder),
 
   getMtgaCardsMtime: (installFolder: string): Promise<number | null> =>
     ipcRenderer.invoke('get-mtga-cards-mtime', installFolder),

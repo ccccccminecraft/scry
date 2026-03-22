@@ -161,10 +161,10 @@ ipcMain.handle('get-mtga-cards-mtime', (_event, installFolder: string) => {
   return candidates.length > 0 ? candidates[0].mtime : null
 })
 
-// IPC: MTGA CardDatabase を同期用パスにコピーして返す
-// Dev:  ./database/mtga_sync.mtga にコピー → Docker は /database/mtga_sync.mtga で参照
-// Prod: backend.exe は同一マシンなので元のパスをそのまま返す
-ipcMain.handle('prepare-mtga-cards-db', (_event, installFolder: string) => {
+// IPC: MTGA CardDatabase を同期する（メインプロセスから直接 backend に HTTP POST）
+// バイナリデータを IPC 経由でレンダラーに渡さず、メインプロセス内で完結させることで
+// ArrayBuffer のシリアライズ問題を回避する
+ipcMain.handle('sync-mtga-cards', async (_event, installFolder: string) => {
   const rawFolder = path.join(installFolder, 'MTGA_Data', 'Downloads', 'Raw')
   let entries: string[]
   try {
@@ -182,19 +182,18 @@ ipcMain.handle('prepare-mtga-cards-db', (_event, installFolder: string) => {
   if (candidates.length === 0) {
     throw new Error('Raw_CardDatabase_*.mtga が見つかりません')
   }
-  if (isDev) {
-    // Docker の /database/ ボリュームにコピーする
-    const destPath = path.join(__dirname, '../../database/mtga_sync.mtga')
-    fs.copyFileSync(candidates[0].path, destPath)
-    return '/database/mtga_sync.mtga'
-  } else {
-    // AppData\Roaming はフォルダリダイレクトでネットワーク上に置かれている場合があるため、
-    // 必ずローカルな %TEMP% (AppData\Local\Temp) にコピーしてから backend.exe に渡す
-    const destDir = app.getPath('temp')
-    const destPath = path.join(destDir, 'mtga_sync.mtga')
-    fs.copyFileSync(candidates[0].path, destPath)
-    return destPath
+  const fileContent = fs.readFileSync(candidates[0].path)
+  const form = new FormData()
+  form.append('file', new Blob([fileContent]), 'mtga_sync.mtga')
+  const res = await fetch('http://localhost:18432/api/admin/sync-mtga-cards', {
+    method: 'POST',
+    body: form,
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error((body as { detail?: string }).detail || `HTTP ${res.status}`)
   }
+  return res.json()
 })
 
 function scanForDatFiles(dir: string): string[] {

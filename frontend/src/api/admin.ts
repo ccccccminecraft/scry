@@ -17,7 +17,6 @@ export async function getMtgaSyncStatus(): Promise<{ folder: string | null; last
 }
 
 export async function syncMtgaCards(installFolder: string): Promise<{ synced: number; source: string }> {
-  const db_path = await window.electronAPI.prepareMtgaCardsDb(installFolder)
-  const res = await axios.post<{ synced: number; source: string }>(`${BASE}/admin/sync-mtga-cards`, { db_path })
-  return res.data
+  // メインプロセスが直接 backend に HTTP POST し、結果を返す
+  return window.electronAPI.syncMtgaCards(installFolder)
 }
