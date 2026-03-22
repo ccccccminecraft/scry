@@ -1,6 +1,6 @@
 # Scry
 
-Magic Online（MTGO）の対戦ログ（`.dat`）を解析・AI 分析する Windows デスクトップアプリ。
+Magic Online（MTGO）および Magic: The Gathering Arena（MTGA）の対戦ログを解析・AI 分析する Windows デスクトップアプリ。
 
 > **アプリの使い方は [`GUIDE.md`](GUIDE.md) を参照してください。**
 > このドキュメントは開発者向けのセットアップ・ビルド手順です。
@@ -9,7 +9,8 @@ Magic Online（MTGO）の対戦ログ（`.dat`）を解析・AI 分析する Win
 
 ## 機能概要
 
-- `.dat` ファイルのインポート（単体 / フォルダ一括スキャン）
+- MTGO `.dat` ファイルのインポート（単体 / フォルダ一括スキャン）
+- MTGA 対戦ログのインポート（Surveil 連携）
 - 対戦履歴・ゲーム詳細の閲覧
 - 統計ダッシュボード（勝率・マリガン率・先手後手分析・デッキ別分析等）
 - AI チャット分析（Claude API）
