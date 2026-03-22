@@ -82,6 +82,7 @@ npm run dev:electron
 
 ```bash
 pip install pyinstaller
+pip install -r backend/requirements.txt
 cd frontend && npm install --legacy-peer-deps
 ```
 
@@ -93,6 +94,7 @@ cd frontend && npm install --legacy-peer-deps
 
 ```bash
 cd backend
+pip install -r requirements.txt
 python -m PyInstaller --onefile --name backend --collect-all keyring app/main.py --clean
 ```
 
@@ -102,6 +104,7 @@ python -m PyInstaller --onefile --name backend --collect-all keyring app/main.py
 
 ```bash
 cd frontend
+npm install --legacy-peer-deps
 npm run build
 ```
 
