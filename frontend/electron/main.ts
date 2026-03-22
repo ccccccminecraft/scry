@@ -188,8 +188,11 @@ ipcMain.handle('prepare-mtga-cards-db', (_event, installFolder: string) => {
     fs.copyFileSync(candidates[0].path, destPath)
     return '/database/mtga_sync.mtga'
   } else {
-    // backend.exe は同一マシンなので直接パスを渡す
-    return candidates[0].path
+    // Program Files 等のアクセス制限を回避するため、
+    // %APPDATA%\Scry\ にコピーしてから backend.exe に渡す
+    const destPath = path.join(app.getPath('userData'), 'mtga_sync.mtga')
+    fs.copyFileSync(candidates[0].path, destPath)
+    return destPath
   }
 })
 
