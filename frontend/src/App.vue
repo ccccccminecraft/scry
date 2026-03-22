@@ -9,12 +9,32 @@
       </router-view>
     </main>
     <AppToast />
+    <OnboardingWizard
+      v-if="showOnboarding"
+      @complete="showOnboarding = false"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref, provide, onMounted } from 'vue'
 import GlobalNav from './components/GlobalNav.vue'
 import AppToast from './components/AppToast.vue'
+import OnboardingWizard from './components/OnboardingWizard.vue'
+import { fetchSettings } from './api/settings'
+
+const showOnboarding = ref(false)
+
+provide('showOnboarding', showOnboarding)
+
+onMounted(async () => {
+  try {
+    const settings = await fetchSettings()
+    if (!settings.onboarding_completed) {
+      showOnboarding.value = true
+    }
+  } catch { /* バックエンド未起動時は無視 */ }
+})
 </script>
 
 <style>

@@ -9,6 +9,7 @@ export interface SettingsResponse {
   min_deck_matches: number
   auto_import_enabled: boolean
   auto_import_interval_sec: number
+  onboarding_completed: boolean
 }
 
 export interface AutoImportStatus {
@@ -40,6 +41,7 @@ export async function updateSettings(body: {
   min_deck_matches?: number | null
   auto_import_enabled?: boolean
   auto_import_interval_sec?: number
+  onboarding_completed?: boolean
 }): Promise<void> {
   await client.put('/api/settings', body)
 }

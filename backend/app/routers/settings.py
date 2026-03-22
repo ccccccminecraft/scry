@@ -34,6 +34,7 @@ class SettingsInput(BaseModel):
     min_deck_matches: int | None = None
     auto_import_enabled: bool | None = None
     auto_import_interval_sec: int | None = None
+    onboarding_completed: bool | None = None
 
 
 @router.get("/settings")
@@ -45,6 +46,7 @@ def get_settings(db: Session = Depends(get_db)):
     min_deck = db.get(Setting, "min_deck_matches")
     auto_enabled = db.get(Setting, "auto_import_enabled")
     auto_interval = db.get(Setting, "auto_import_interval_sec")
+    onboarding = db.get(Setting, "onboarding_completed")
     return {
         "llm_provider": provider.value if provider else "claude",
         "api_key_configured": get_api_key(db) is not None,
@@ -54,6 +56,7 @@ def get_settings(db: Session = Depends(get_db)):
         "min_deck_matches": int(min_deck.value) if min_deck else 1,
         "auto_import_enabled": auto_enabled.value == "true" if auto_enabled else False,
         "auto_import_interval_sec": int(auto_interval.value) if auto_interval else 30,
+        "onboarding_completed": onboarding.value == "1" if onboarding else False,
     }
 
 
@@ -125,6 +128,14 @@ def put_settings(body: SettingsInput, db: Session = Depends(get_db)):
             s.value = val
         else:
             db.add(Setting(key="auto_import_interval_sec", value=val))
+
+    if body.onboarding_completed is not None:
+        s = db.get(Setting, "onboarding_completed")
+        val = "1" if body.onboarding_completed else "0"
+        if s:
+            s.value = val
+        else:
+            db.add(Setting(key="onboarding_completed", value=val))
 
     db.commit()
     return {"ok": True}

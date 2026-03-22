@@ -8,6 +8,9 @@
         <button class="settings__btn settings__btn--primary" @click="reload">再読み込み</button>
       </div>
       <p class="settings__note">画面の表示がおかしい場合や設定を反映させたい場合にご利用ください。</p>
+      <div class="settings__row" style="margin-top: 8px;">
+        <button class="settings__btn" @click="restartOnboarding">セットアップウィザードを再実行</button>
+      </div>
     </div>
 
     <div class="settings__section">
@@ -195,7 +198,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, inject, onMounted, type Ref } from 'vue'
 import axios from 'axios'
 import { useToast } from '../composables/useToast'
 import { fetchSettings, updateSettings, deleteApiKey, fetchAutoImportStatus, type AutoImportStatus } from '../api/settings'
@@ -207,6 +210,17 @@ import ConfirmDialog from '../components/ConfirmDialog.vue'
 import TypeToConfirmDialog from '../components/TypeToConfirmDialog.vue'
 
 const { showSuccess, showError } = useToast()
+
+const showOnboarding = inject<Ref<boolean>>('showOnboarding')
+
+async function restartOnboarding() {
+  try {
+    await updateSettings({ onboarding_completed: false })
+    if (showOnboarding) showOnboarding.value = true
+  } catch {
+    showError('ウィザードの起動に失敗しました')
+  }
+}
 
 const configured = ref(false)
 const restoreFileInput = ref<HTMLInputElement | null>(null)
