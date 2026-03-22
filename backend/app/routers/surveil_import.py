@@ -53,6 +53,15 @@ def set_surveil_folder(body: FolderInput, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
+@router.delete("/import/surveil/folder", status_code=204)
+def clear_surveil_folder(db: Session = Depends(get_db)):
+    """監視フォルダの設定を解除する。"""
+    s = db.get(Setting, _FOLDER_KEY)
+    if s:
+        db.delete(s)
+        db.commit()
+
+
 # ─── 取り込み済み ID 一覧 ──────────────────────────────────────────────────────
 
 @router.get("/import/surveil/imported-ids")

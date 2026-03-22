@@ -50,6 +50,7 @@
             </button>
             <button class="btn" @click="loadSurveilPending" :disabled="surveilRunning">更新</button>
             <button class="btn" @click="changeSurveilFolder">フォルダを変更</button>
+            <button class="btn btn--danger" @click="clearSurveilFolderSetting" :disabled="surveilRunning">解除</button>
           </div>
 
           <!-- pending ファイル一覧 -->
@@ -116,6 +117,7 @@
               {{ quickRunning ? 'スキャン中...' : '⚡ クイックインポート' }}
             </button>
             <button class="btn" @click="changeFolder">フォルダを変更</button>
+            <button class="btn btn--danger" @click="clearQuickFolder" :disabled="quickRunning">解除</button>
           </div>
         </template>
 
@@ -247,6 +249,7 @@ import {
   importSurveilFile,
   getSurveilFolder,
   setSurveilFolder,
+  clearSurveilFolder,
   getSurveilImportedIds,
   type ImportResult,
 } from '../api/import'
@@ -374,6 +377,15 @@ async function changeFolder() {
   await saveQuickFolder(result.folderPath)
 }
 
+async function clearQuickFolder() {
+  try {
+    await updateSettings({ quick_import_folder: null })
+    quickFolder.value = null
+  } catch {
+    showError('フォルダの解除に失敗しました')
+  }
+}
+
 async function saveQuickFolder(path: string) {
   try {
     await updateSettings({ quick_import_folder: path })
@@ -435,6 +447,17 @@ async function changeSurveilFolder() {
   const result = await window.electronAPI.scanFolder()
   if (!result) return
   await saveSurveilFolder(result.folderPath)
+}
+
+async function clearSurveilFolderSetting() {
+  try {
+    await clearSurveilFolder()
+    surveilFolder.value = null
+    surveilPending.value = null
+    surveilPendingFiles.value = []
+  } catch {
+    showError('フォルダの解除に失敗しました')
+  }
 }
 
 async function saveSurveilFolder(path: string) {
@@ -843,6 +866,15 @@ function formatDate(iso: string): string {
 .btn--folder {
   padding: 10px 24px;
   font-size: 14px;
+}
+
+.btn--danger {
+  color: #a03030;
+  border-color: #d8a0a0;
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: #fff0f0;
 }
 
 .btn:disabled {

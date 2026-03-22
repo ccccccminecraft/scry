@@ -46,6 +46,10 @@ export async function setSurveilFolder(folder: string): Promise<void> {
   await client.put('/api/import/surveil/folder', { folder })
 }
 
+export async function clearSurveilFolder(): Promise<void> {
+  await client.delete('/api/import/surveil/folder')
+}
+
 export async function getSurveilImportedIds(): Promise<string[]> {
   const res = await client.get<{ ids: string[] }>('/api/import/surveil/imported-ids')
   return res.data.ids
