@@ -16,7 +16,8 @@ export async function getMtgaSyncStatus(): Promise<{ folder: string | null; last
   return res.data
 }
 
-export async function syncMtgaCards(): Promise<{ synced: number; source: string }> {
-  const res = await axios.post(`${BASE}/admin/sync-mtga-cards`)
+export async function syncMtgaCards(installFolder: string): Promise<{ synced: number; source: string }> {
+  const db_path = await window.electronAPI.prepareMtgaCardsDb(installFolder)
+  const res = await axios.post<{ synced: number; source: string }>(`${BASE}/admin/sync-mtga-cards`, { db_path })
   return res.data
 }

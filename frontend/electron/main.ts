@@ -142,6 +142,38 @@ ipcMain.handle('read-dat-file', (_event, filePath: string) => {
   return fs.readFileSync(filePath)
 })
 
+// IPC: MTGA CardDatabase を同期用パスにコピーして返す
+// Dev:  ./database/mtga_sync.mtga にコピー → Docker は /database/mtga_sync.mtga で参照
+// Prod: backend.exe は同一マシンなので元のパスをそのまま返す
+ipcMain.handle('prepare-mtga-cards-db', (_event, installFolder: string) => {
+  const rawFolder = path.join(installFolder, 'MTGA_Data', 'Downloads', 'Raw')
+  let entries: string[]
+  try {
+    entries = fs.readdirSync(rawFolder)
+  } catch {
+    throw new Error(`フォルダが見つかりません: ${rawFolder}`)
+  }
+  const candidates = entries
+    .filter(f => /^Raw_CardDatabase_.*\.mtga$/.test(f))
+    .map(f => {
+      const p = path.join(rawFolder, f)
+      return { path: p, mtime: fs.statSync(p).mtimeMs }
+    })
+    .sort((a, b) => b.mtime - a.mtime)
+  if (candidates.length === 0) {
+    throw new Error('Raw_CardDatabase_*.mtga が見つかりません')
+  }
+  if (isDev) {
+    // Docker の /database/ ボリュームにコピーする
+    const destPath = path.join(__dirname, '../../database/mtga_sync.mtga')
+    fs.copyFileSync(candidates[0].path, destPath)
+    return '/database/mtga_sync.mtga'
+  } else {
+    // backend.exe は同一マシンなので直接パスを渡す
+    return candidates[0].path
+  }
+})
+
 function scanForDatFiles(dir: string): string[] {
   const results: string[] = []
   try {

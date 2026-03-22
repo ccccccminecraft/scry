@@ -84,14 +84,9 @@
 
       <div class="settings__subsection-title">MTGA 公式カードデータ同期</div>
       <div class="settings__row">
-        <input
-          v-model="mtgaFolderInput"
-          type="text"
-          class="settings__input"
-          placeholder="フォルダパスを入力または右のボタンで選択"
-        />
+        <span class="settings__folder-path">{{ mtgaFolderInput || '未設定' }}</span>
         <button class="settings__btn" @click="handleSelectMtgaFolder">参照...</button>
-        <button class="settings__btn settings__btn--primary" :disabled="!mtgaFolderInput.trim()" @click="handleSaveMtgaFolder">保存</button>
+        <button v-if="mtgaFolderInput" class="settings__btn" @click="handleClearMtgaFolder">クリア</button>
       </div>
       <div class="settings__row">
         <button
@@ -395,14 +390,10 @@ async function onConfirmReset() {
 
 async function handleSelectMtgaFolder() {
   const folder = await window.electronAPI?.selectFolder()
-  if (folder) mtgaFolderInput.value = folder
-}
-
-async function handleSaveMtgaFolder() {
-  const folder = mtgaFolderInput.value.trim()
   if (!folder) return
   try {
     await setMtgaFolder(folder)
+    mtgaFolderInput.value = folder
     mtgaFolderSaved.value = true
     showSuccess('フォルダパスを保存しました')
   } catch {
@@ -410,14 +401,26 @@ async function handleSaveMtgaFolder() {
   }
 }
 
+async function handleClearMtgaFolder() {
+  try {
+    await setMtgaFolder('')
+    mtgaFolderInput.value = ''
+    mtgaFolderSaved.value = false
+    showSuccess('フォルダを解除しました')
+  } catch {
+    showError('解除に失敗しました')
+  }
+}
+
 async function handleSyncMtgaCards() {
+  if (!mtgaFolderInput.value) return
   mtgaSyncing.value = true
   try {
-    const result = await syncMtgaCards()
+    const result = await syncMtgaCards(mtgaFolderInput.value)
     mtgaLastSyncedAt.value = new Date().toLocaleString('ja-JP')
     showSuccess(`MTGAカード名データを同期しました（${result.synced.toLocaleString()} 件）`)
   } catch (e: any) {
-    showError(e?.response?.data?.detail || '同期に失敗しました')
+    showError(e?.response?.data?.detail || e?.message || '同期に失敗しました')
   } finally {
     mtgaSyncing.value = false
   }

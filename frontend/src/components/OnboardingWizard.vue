@@ -194,6 +194,10 @@
               <span class="onboarding-summary__label">Surveil フォルダ</span>
               <span class="onboarding-summary__value">{{ surveilFolder }}</span>
             </div>
+            <div v-if="mtgaFolder" class="onboarding-summary__item">
+              <span class="onboarding-summary__label">MTGA フォルダ</span>
+              <span class="onboarding-summary__value">{{ mtgaFolder }}</span>
+            </div>
             <div class="onboarding-summary__item">
               <span class="onboarding-summary__label">自動インポート</span>
               <span class="onboarding-summary__value">{{ (mtgoAutoImport || mtgaAutoImport) ? '有効' : '無効' }}</span>
@@ -220,6 +224,7 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { updateSettings } from '../api/settings'
 import { setSurveilFolder } from '../api/import'
+import { setMtgaFolder, syncMtgaCards } from '../api/admin'
 import { useToast } from '../composables/useToast'
 
 const emit = defineEmits<{ complete: [] }>()
@@ -307,6 +312,10 @@ async function complete() {
     })
     if (surveilFolder.value) {
       await setSurveilFolder(surveilFolder.value)
+    }
+    if (mtgaFolder.value) {
+      await setMtgaFolder(mtgaFolder.value)
+      await syncMtgaCards(mtgaFolder.value)
     }
     currentStep.value = 'done'
   } catch {

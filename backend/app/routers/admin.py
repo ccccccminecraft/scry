@@ -9,6 +9,7 @@ GET  /api/admin/sync-mtga-cards/status - 最終同期日時を返す
 from __future__ import annotations
 
 import logging
+import os
 import re
 import sqlite3 as _sqlite3
 from datetime import datetime, timezone
@@ -35,6 +36,10 @@ _TAG_RE = re.compile(r"<[^>]+>")
 
 class FolderInput(BaseModel):
     folder: str
+
+
+class SyncInput(BaseModel):
+    db_path: str
 
 
 @router.get("/admin/mtga-cards-folder")
@@ -68,33 +73,19 @@ def get_mtga_sync_status(db: Session = Depends(get_db)):
 
 
 @router.post("/admin/sync-mtga-cards")
-def sync_mtga_cards(db: Session = Depends(get_db)):
+def sync_mtga_cards(body: SyncInput, db: Session = Depends(get_db)):
     """
-    設定済みフォルダ内の Raw_CardDatabase_*.mtga を読み込み、
-    mtga_cards テーブルを更新する。
+    Electron が準備したファイルパスを受け取り、mtga_cards テーブルを更新する。
 
-    MTGA 公式データを使用するため Scryfall で未収録の新セットカードも解決できる。
+    Dev:  Electron が ./database/ にコピーした /database/mtga_sync.mtga を読む
+    Prod: Electron が backend.exe と同一マシン上のパスをそのまま渡す
     """
-    folder_s = db.get(Setting, _MTGA_FOLDER_KEY)
-    if not folder_s or not folder_s.value:
-        raise HTTPException(status_code=400, detail="MTGA カードDB フォルダが設定されていません")
+    db_path = Path(body.db_path)
+    if not db_path.is_file():
+        raise HTTPException(status_code=400, detail=f"ファイルが見つかりません: {body.db_path}")
 
-    folder = Path(folder_s.value)
-    if not folder.is_dir():
-        raise HTTPException(status_code=400, detail=f"フォルダが見つかりません: {folder_s.value}")
-
-    # Raw_CardDatabase_*.mtga を検索（複数ある場合は最新のものを使用）
-    candidates = sorted(
-        folder.glob("Raw_CardDatabase_*.mtga"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    if not candidates:
-        raise HTTPException(status_code=404, detail="Raw_CardDatabase_*.mtga が見つかりません")
-
-    db_path = candidates[0]
     logger.info("MTGA CardDatabase sync: %s", db_path)
-
+    is_temp = db_path.name == 'mtga_sync.mtga'
     try:
         card_count, counter_count = _sync_from_mtga_db(db_path, db)
         db.commit()
@@ -103,6 +94,12 @@ def sync_mtga_cards(db: Session = Depends(get_db)):
         db.rollback()
         logger.error("MTGA CardDatabase sync failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if is_temp:
+            try:
+                os.unlink(db_path)
+            except Exception:
+                pass
 
 
 def _sync_from_mtga_db(db_path: Path, db: Session) -> tuple[int, int]:
