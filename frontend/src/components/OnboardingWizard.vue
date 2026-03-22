@@ -127,7 +127,7 @@
                 <button class="onboarding-btn onboarding-btn--sm" @click="selectMtgaFolder">選択</button>
                 <button v-if="mtgaFolder" class="onboarding-btn onboarding-btn--sm onboarding-btn--ghost" @click="mtgaFolder = null">クリア</button>
               </div>
-              <div class="onboarding-field__hint">カード名データベースの同期に使用します</div>
+              <div class="onboarding-field__hint">例: C:\Program Files\Wizards of the Coast\MTGA</div>
             </div>
             <div class="onboarding-field">
               <label class="onboarding-toggle">

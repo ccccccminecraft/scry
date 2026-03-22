@@ -106,7 +106,8 @@
         </span>
       </div>
       <p class="settings__note">
-        MTGA インストールフォルダ内の Raw_CardDatabase ファイルを読み込み、カード名キャッシュを更新します。
+        MTGA インストールフォルダ内の Raw_CardDatabase ファイルを読み込み、カード名キャッシュを更新します。<br />
+        例: C:\Program Files\Wizards of the Coast\MTGA
       </p>
     </div>
 
