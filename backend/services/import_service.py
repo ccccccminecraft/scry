@@ -484,6 +484,7 @@ class SurveilImportService:
                     deck_sideboard=parsed["deck_sideboard"],
                     played_at=gre_result["played_at"],
                     fmt=fmt,
+                    deck_tile_id=gre_result.get("deck_tile_id"),
                 )
                 if version is not None:
                     for mp in match.players:
@@ -588,6 +589,14 @@ class SurveilImportService:
             games=games,
         )
 
+    def _resolve_tile(self, grp_id: int) -> str | None:
+        """grpId → scryfall_id を解決する。mtga_cards 未同期の場合は None。"""
+        row = self._db.query(MtgaCard).filter(MtgaCard.arena_id == grp_id).first()
+        if row is None:
+            return None
+        card = self._get_or_create_card(row.card_name)
+        return card.scryfall_id  # 未解決の場合は None（fill_scryfall_ids が後から補完）
+
     def _sync_deck_from_import(
         self,
         deck_name: str,
@@ -595,6 +604,7 @@ class SurveilImportService:
         deck_sideboard: dict[str, int],
         played_at: datetime,
         fmt: str | None,
+        deck_tile_id: int | None = None,
     ) -> DeckVersion | None:
         """
         MTGA インポート時にデッキ管理へ自動同期する。
@@ -642,15 +652,23 @@ class SurveilImportService:
                     )
                     if existing == incoming:
                         logger.debug("Deck sync: skipped (same list) for '%s'", deck_name)
+                        # tile が未設定の場合のみ更新（手動設定を尊重）
+                        if deck_tile_id and deck.tile_scryfall_id is None:
+                            deck.tile_scryfall_id = self._resolve_tile(deck_tile_id)
                         return latest
                     next_version_number = latest.version_number + 1
                 else:
                     next_version_number = 1
+                # tile が未設定の場合のみ更新（手動設定を尊重）
+                if deck_tile_id and deck.tile_scryfall_id is None:
+                    deck.tile_scryfall_id = self._resolve_tile(deck_tile_id)
             else:
+                tile_scryfall_id = self._resolve_tile(deck_tile_id) if deck_tile_id else None
                 deck = Deck(
                     name=deck_name,
                     format=fmt if fmt and fmt != "unknown" else None,
                     created_at=played_at,
+                    tile_scryfall_id=tile_scryfall_id,
                 )
                 self._db.add(deck)
                 self._db.flush()

@@ -27,6 +27,7 @@ MTGOおよびMTGAの対戦ログを記録・分析するElectronアプリ。
 |------------|------|----------|
 | [features/replay/](features/replay/) | リプレイ機能 | 設計中 |
 | [features/auto-import/](features/auto-import/) | 自動インポート（バックグラウンド定期スキャン） | 設計完了・実装前 |
+| [features/deck-tile/](features/deck-tile/) | デッキタイル（代表カード画像）自動設定・手動設定 | 設計完了・実装前 |
 
 ### ライフサイクル
 

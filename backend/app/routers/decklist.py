@@ -172,6 +172,7 @@ def _save_version(db: Session, deck_id: int, memo: str, parsed: list[dict]) -> D
 class DeckInput(BaseModel):
     name: str
     format: Optional[str] = None
+    tile_scryfall_id: Optional[str] = None
 
 
 def _deck_to_dict(deck: Deck) -> dict:
@@ -191,6 +192,7 @@ def _deck_to_dict(deck: Deck) -> dict:
         "format": deck.format,
         "created_at": deck.created_at.isoformat(),
         "is_archived": bool(deck.is_archived),
+        "tile_scryfall_id": deck.tile_scryfall_id,
         "latest_version": latest,
     }
 
@@ -224,6 +226,9 @@ def update_deck(deck_id: int, body: DeckInput, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404)
     deck.name = body.name.strip()
     deck.format = body.format or None
+    if body.tile_scryfall_id is not None:
+        # 空文字列はクリア、それ以外はセット
+        deck.tile_scryfall_id = body.tile_scryfall_id or None
     db.commit()
     db.refresh(deck)
     return _deck_to_dict(deck)

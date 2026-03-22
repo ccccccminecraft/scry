@@ -24,6 +24,7 @@ class Deck(Base):
     format: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    tile_scryfall_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     versions: Mapped[list["DeckVersion"]] = relationship(
         back_populates="deck", cascade="all, delete-orphan"

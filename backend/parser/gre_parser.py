@@ -56,6 +56,7 @@ class GREParseResult(TypedDict):
     obj_name_map: dict[int, str]  # grpId → 合成カード名（トークン・基本土地など Scryfall 未収録分の fallback）
     event_name: Optional[str]     # EventJoin の EventName（例: "Traditional_Ladder"）
     deck_name: Optional[str]      # EventSetDeckV2 の Summary.Name（例: "ST 赤単 BO3"）
+    deck_tile_id: Optional[int]   # EventSetDeckV2 の Summary.DeckTileId（grpId）
 
 
 class ParseError(Exception):
@@ -219,6 +220,7 @@ def parse_gre_json(data: dict) -> GREParseResult:
     sideboard_grp_ids: list[int] = data.get("sideboard_grp_ids", [])
     event_name: Optional[str] = data.get("event_name")
     deck_name: Optional[str] = data.get("deck_name")
+    deck_tile_id: Optional[int] = data.get("deck_tile_id")
 
     played_at_str = data.get("played_at", "")
     try:
@@ -281,6 +283,7 @@ def parse_gre_json(data: dict) -> GREParseResult:
         obj_name_map=ctx.obj_name_map,
         event_name=event_name,
         deck_name=deck_name,
+        deck_tile_id=deck_tile_id,
     )
 
 

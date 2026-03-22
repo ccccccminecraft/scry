@@ -20,8 +20,18 @@
           :class="{ 'deck-item--active': selectedDeck?.id === deck.id }"
           @click="selectDeck(deck)"
         >
-          <div class="deck-item__name">{{ deck.name }}</div>
-          <div class="deck-item__meta">{{ deck.format ?? '未設定' }}</div>
+          <div class="deck-item__body">
+            <img
+              v-if="deck.tile_scryfall_id"
+              :src="cardImageUrl(deck.tile_scryfall_id)"
+              class="deck-item__tile"
+              :alt="deck.name"
+            />
+            <div class="deck-item__info">
+              <div class="deck-item__name">{{ deck.name }}</div>
+              <div class="deck-item__meta">{{ deck.format ?? '未設定' }}</div>
+            </div>
+          </div>
         </div>
         <div v-if="filteredDecks.length === 0" class="pane__empty">デッキがありません</div>
 
@@ -36,8 +46,18 @@
             :key="deck.id"
             class="deck-item deck-item--archived"
           >
-            <div class="deck-item__name">{{ deck.name }}</div>
-            <div class="deck-item__meta">{{ deck.format ?? '未設定' }}</div>
+            <div class="deck-item__body">
+              <img
+                v-if="deck.tile_scryfall_id"
+                :src="cardImageUrl(deck.tile_scryfall_id)"
+                class="deck-item__tile"
+                :alt="deck.name"
+              />
+              <div class="deck-item__info">
+                <div class="deck-item__name">{{ deck.name }}</div>
+                <div class="deck-item__meta">{{ deck.format ?? '未設定' }}</div>
+              </div>
+            </div>
             <div class="deck-item__actions">
               <button class="deck-item__action-btn" @click.stop="restoreDeck(deck)">復元</button>
               <button class="deck-item__action-btn deck-item__action-btn--danger" @click.stop="confirmPermanentDeleteDeck(deck)">完全削除</button>
@@ -199,12 +219,44 @@
             <option v-for="f in formats" :key="f" :value="f">{{ f }}</option>
           </select>
         </div>
+        <div v-if="editingDeck" class="modal__field modal__field--tile">
+          <label class="modal__label">代表カード</label>
+          <div class="tile-preview">
+            <img
+              v-if="deckTileInput"
+              :src="cardImageUrl(deckTileInput, 'normal')"
+              class="tile-preview__img"
+              alt="代表カード"
+            />
+            <div v-else class="tile-preview__empty">未設定</div>
+            <div class="tile-preview__actions">
+              <button
+                class="modal__btn"
+                :disabled="!selectedVersion"
+                @click="tilePickerVisible = true"
+              >選択</button>
+              <button
+                v-if="deckTileInput"
+                class="modal__btn modal__btn--danger"
+                @click="deckTileInput = null"
+              >クリア</button>
+            </div>
+          </div>
+        </div>
         <div class="modal__footer">
           <button class="modal__btn" @click="deckModalVisible = false">キャンセル</button>
           <button class="modal__btn modal__btn--primary" :disabled="!deckNameInput.trim()" @click="saveDeck">保存</button>
         </div>
       </div>
     </div>
+
+    <DeckTilePickerModal
+      :visible="tilePickerVisible"
+      :version="selectedVersion"
+      :current-tile="deckTileInput"
+      @close="tilePickerVisible = false"
+      @select="onTileSelect"
+    />
 
     <!-- バージョン作成・編集モーダル -->
     <div v-if="versionModalVisible" class="modal-overlay" @click.self="versionModalVisible = false">
@@ -309,6 +361,7 @@ import { ref, computed, reactive, onMounted, onUnmounted, watch } from 'vue'
 defineOptions({ name: 'DeckBuilderView' })
 import { useToast } from '../composables/useToast'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import DeckTilePickerModal from '../components/DeckTilePickerModal.vue'
 import {
   fetchDecks,
   createDeck,
@@ -365,6 +418,10 @@ const deckModalVisible = ref(false)
 const editingDeck = ref<Deck | null>(null)
 const deckNameInput = ref('')
 const deckFormatInput = ref('')
+const deckTileInput = ref<string | null>(null)
+
+// Tile picker
+const tilePickerVisible = ref(false)
 
 // Version modal
 const versionModalVisible = ref(false)
@@ -495,7 +552,13 @@ function openEditDeck() {
   editingDeck.value = selectedDeck.value
   deckNameInput.value = selectedDeck.value.name
   deckFormatInput.value = selectedDeck.value.format ?? ''
+  deckTileInput.value = selectedDeck.value.tile_scryfall_id
   deckModalVisible.value = true
+}
+
+function onTileSelect(scryfallId: string) {
+  deckTileInput.value = scryfallId
+  tilePickerVisible.value = false
 }
 
 async function saveDeck() {
@@ -503,7 +566,7 @@ async function saveDeck() {
   const format = deckFormatInput.value || null
   try {
     if (editingDeck.value) {
-      const updated = await updateDeck(editingDeck.value.id, name, format)
+      const updated = await updateDeck(editingDeck.value.id, name, format, deckTileInput.value)
       decks.value = decks.value.map(d => d.id === updated.id ? updated : d)
       if (selectedDeck.value?.id === updated.id) selectedDeck.value = updated
       showSuccess('デッキを更新しました')
@@ -819,7 +882,7 @@ async function applyBulk() {
 
 /* デッキアイテム */
 .deck-item {
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-bottom: 1px solid #f0ece0;
   cursor: pointer;
 }
@@ -831,10 +894,32 @@ async function applyBulk() {
   border-left: 3px solid #4a6fa5;
 }
 
+.deck-item__body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.deck-item__tile {
+  width: 36px;
+  height: 50px;
+  object-fit: cover;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.deck-item__info {
+  flex: 1;
+  min-width: 0;
+}
+
 .deck-item__name {
   font-size: 13px;
   font-weight: bold;
   color: #2c2416;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .deck-item__meta {
@@ -1168,6 +1253,50 @@ async function applyBulk() {
 .modal__field--grow {
   flex: 1;
   min-height: 0;
+}
+
+.modal__btn--danger {
+  color: #a03030;
+  border-color: #d8a0a0;
+}
+
+.modal__btn--danger:hover {
+  background: #fff0f0;
+}
+
+/* タイルプレビュー */
+.tile-preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.tile-preview__img {
+  width: 72px;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.tile-preview__empty {
+  width: 72px;
+  height: 100px;
+  border: 1px dashed #c8b89a;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #a09080;
+  flex-shrink: 0;
+}
+
+.tile-preview__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
 }
 
 .modal__label {

@@ -71,6 +71,9 @@ def init_db() -> None:
             if "is_archived" not in cols:
                 conn.execute(text("ALTER TABLE decks ADD COLUMN is_archived BOOLEAN NOT NULL DEFAULT 0"))
                 conn.commit()
+            if "tile_scryfall_id" not in cols:
+                conn.execute(text("ALTER TABLE decks ADD COLUMN tile_scryfall_id TEXT"))
+                conn.commit()
 
         if "deck_versions" in inspector.get_table_names():
             cols = {c["name"] for c in inspector.get_columns("deck_versions")}

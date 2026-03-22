@@ -8,6 +8,7 @@ export interface Deck {
   format: string | null
   created_at: string
   is_archived: boolean
+  tile_scryfall_id: string | null
   latest_version: DeckVersionSummary | null
 }
 
@@ -44,8 +45,15 @@ export async function createDeck(name: string, format: string | null): Promise<D
   return res.data
 }
 
-export async function updateDeck(deckId: number, name: string, format: string | null): Promise<Deck> {
-  const res = await axios.put(`${BASE}/decklist/decks/${deckId}`, { name, format })
+export async function updateDeck(
+  deckId: number,
+  name: string,
+  format: string | null,
+  tileScryfall?: string | null,
+): Promise<Deck> {
+  const body: Record<string, unknown> = { name, format }
+  if (tileScryfall !== undefined) body.tile_scryfall_id = tileScryfall ?? ''
+  const res = await axios.put(`${BASE}/decklist/decks/${deckId}`, body)
   return res.data
 }
 
