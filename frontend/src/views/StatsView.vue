@@ -14,6 +14,12 @@
     <template v-else-if="stats">
       <!-- サマリーカード -->
       <div class="stats__summary">
+        <img
+          v-if="selectedDeckTile"
+          :src="selectedDeckTile"
+          class="stats__deck-tile"
+          alt=""
+        />
         <div class="stats__card">
           <div class="stats__card-label">総試合数</div>
           <div class="stats__card-value">{{ stats.total_matches }}</div>
@@ -128,6 +134,7 @@ defineOptions({ name: 'StatsView' })
 import { useToast } from '../composables/useToast'
 import { fetchStats, fetchCardStats, type StatsResponse, type CardStat } from '../api/stats'
 import { useFilterState } from '../composables/useFilterState'
+import { cardImageUrl } from '../api/decklist'
 import WinRateHistoryChart from '../components/charts/WinRateHistoryChart.vue'
 import FirstSecondChart from '../components/charts/FirstSecondChart.vue'
 import DeckStatsChart from '../components/charts/DeckStatsChart.vue'
@@ -137,10 +144,16 @@ const { showError } = useToast()
 const {
   useDeckManager, deckId, deck, versionId, opponentDeck, dateFrom, dateTo,
   player, opponent, format,
-  playerList,
+  playerList, deckList,
   minDeckMatches,
   init,
 } = useFilterState()
+
+const selectedDeckTile = computed(() => {
+  if (!useDeckManager.value || !deckId.value) return null
+  const d = deckList.value.find(d => d.id === deckId.value)
+  return d?.tile_scryfall_id ? cardImageUrl(d.tile_scryfall_id, 'normal') : null
+})
 
 const stats = ref<StatsResponse | null>(null)
 const historyMode = ref<number>(20)
@@ -297,6 +310,15 @@ onActivated(activate)
   gap: 12px;
   flex-wrap: wrap;
   margin-bottom: 20px;
+}
+
+.stats__deck-tile {
+  width: 58px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 5px;
+  flex-shrink: 0;
+  align-self: center;
 }
 
 .stats__card {
