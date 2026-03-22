@@ -36,9 +36,12 @@ def step(title: str) -> None:
 
 
 def run(cmd: list[str], cwd: Path) -> None:
-    """コマンドを実行し、失敗時は終了する。"""
+    """コマンドを実行し、失敗時は終了する。
+
+    Windows では npm 等が .cmd 経由で呼ばれるため shell=True を使用する。
+    """
     print(f"$ {' '.join(cmd)}  (cwd: {cwd})")
-    result = subprocess.run(cmd, cwd=cwd)
+    result = subprocess.run(cmd, cwd=cwd, shell=(sys.platform == "win32"))
     if result.returncode != 0:
         print(f"\n[ERROR] コマンドが失敗しました (exit code {result.returncode})")
         sys.exit(result.returncode)
