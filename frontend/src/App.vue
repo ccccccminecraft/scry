@@ -26,7 +26,7 @@ import { getMtgaSyncStatus, syncMtgaCards } from './api/admin'
 import { useToast } from './composables/useToast'
 
 const showOnboarding = ref(false)
-const { showSuccess, showError } = useToast()
+const { showSuccess } = useToast()
 
 provide('showOnboarding', showOnboarding)
 

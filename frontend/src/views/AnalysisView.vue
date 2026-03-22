@@ -141,7 +141,7 @@ const {
   playerModel,
   useDeckManager, deckId, deck, versionId, opponentDeck, dateFrom, dateTo,
   player, opponent, format,
-  playerList, formatList,
+  playerList,
   init,
 } = useFilterState()
 
