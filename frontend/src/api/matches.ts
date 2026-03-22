@@ -133,8 +133,10 @@ export async function bulkAssignDeckVersion(deck_version_id: number, params: Bul
   return res.data.updated
 }
 
-export async function fetchLatestMatchDate(): Promise<string | null> {
-  const res = await client.get<{ latest_date: string | null }>('/api/matches/latest-date')
+export async function fetchLatestMatchDate(source?: string): Promise<string | null> {
+  const res = await client.get<{ latest_date: string | null }>('/api/matches/latest-date', {
+    params: source ? { source } : {},
+  })
   return res.data.latest_date
 }
 

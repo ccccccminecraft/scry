@@ -502,10 +502,13 @@ def bulk_assign_deck_version(body: BulkAssignBody, db: Session = Depends(get_db)
 
 
 @router.get("/matches/latest-date")
-def get_latest_match_date(db: Session = Depends(get_db)):
-    """最新の played_at を返す。matches が空のときは null を返す。"""
+def get_latest_match_date(source: str | None = None, db: Session = Depends(get_db)):
+    """最新の played_at を返す。source を指定するとそのソースのみを対象にする。"""
     from sqlalchemy import func
-    latest = db.query(func.max(Match.played_at)).scalar()
+    q = db.query(func.max(Match.played_at))
+    if source:
+        q = q.filter(Match.source == source)
+    latest = q.scalar()
     return {"latest_date": latest.isoformat() if latest else None}
 
 

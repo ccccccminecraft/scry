@@ -341,7 +341,7 @@ onMounted(async () => {
   try {
     const [settings, latest, surveilFolderRes] = await Promise.all([
       fetchSettings(),
-      fetchLatestMatchDate(),
+      fetchLatestMatchDate('mtgo'),
       getSurveilFolder(),
     ])
     quickFolder.value = settings.quick_import_folder
@@ -364,7 +364,7 @@ function reset() {
   importTotal.value = 0
   batchResult.value = null
   // 最終インポート日時を再取得
-  fetchLatestMatchDate().then(d => { latestDate.value = d }).catch(() => {})
+  fetchLatestMatchDate('mtgo').then(d => { latestDate.value = d }).catch(() => {})
 }
 
 function toggleAll() {
