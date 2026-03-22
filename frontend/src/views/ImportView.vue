@@ -74,7 +74,7 @@
           <p class="quick__desc">
             Surveil の出力フォルダ（matches/）を登録してください
           </p>
-          <button class="btn btn--primary" @click="registerSurveilFolder">フォルダを登録する</button>
+          <button class="btn btn--primary" style="align-self: flex-start;" @click="registerSurveilFolder">フォルダを登録する</button>
         </template>
       </div>
 
@@ -126,7 +126,7 @@
           <p class="quick__desc">
             フォルダを登録するとワンクリックで新規ログをインポートできます
           </p>
-          <button class="btn btn--primary" @click="registerFolder">フォルダを登録する</button>
+          <button class="btn btn--primary" style="align-self: flex-start;" @click="registerFolder">フォルダを登録する</button>
         </template>
       </div>
 
