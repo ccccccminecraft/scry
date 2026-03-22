@@ -122,19 +122,50 @@ Surveil 出力ファイル（{match_id}.json）
         ▼ 差分ファイルを readDatFile で読み込み
         ▼ POST /api/import/surveil（ファイルごと）
 
-schema_version=2（後方互換）:
-  ▼ surveil_parser.py → SurveilParseResult
-  ▼ SurveilImportService._save() → DB 保存
-
 schema_version=3（現行）:
   ▼ gre_parser.py → GREParseResult（grpId 未解決）
   ▼ ScryfallClient.fetch_by_arena_ids() → grpId → card_name 解決
       ├── mtga_cards キャッシュ（DB）
-      ├── Scryfall GET /cards/arena/{id}
       └── obj_name_map フォールバック（トークン・基本土地）
   ▼ SurveilImportService._save() → DB 保存
+  ▼ _sync_deck_from_import() → デッキ自動登録（Deck / DeckVersion 作成 or スキップ）
   ▼ _infer_format_from_deck() → フォーマット推定
+
+schema_version=2（後方互換）:
+  ▼ surveil_parser.py → SurveilParseResult → SurveilImportService._save()
 ```
+
+### 自動インポート（バックグラウンドスケジューラー）
+
+FastAPI 起動時に asyncio バックグラウンドタスクとして常駐するスケジューラー。
+
+```
+FastAPI 起動
+  ▼ lifespan イベントでスケジューラータスク開始
+  │
+  ループ（設定間隔ごと、デフォルト 30 秒）
+  │
+  ├── auto_import_enabled が false → スキップ
+  │
+  ├── MTGO スキャン
+  │     ▼ quick_import_folder 設定取得
+  │     ▼ DB の既存 match_id セットと差分比較（mtime ベース）
+  │     ▼ ImportService で新ファイルをインポート
+  │
+  └── MTGA スキャン
+        ▼ surveil_folder 設定取得
+        ▼ DB の既存 match_id セットと差分比較
+        ▼ SurveilImportService で新ファイルをインポート
+              ▼ デッキ自動登録（_sync_deck_from_import）も実行
+
+最終実行日時・結果 → DB（settings テーブル）に保存
+  ▼ GET /api/import/auto-import/status で取得可能
+```
+
+> **開発環境（Docker）の注意**: バックエンドコンテナはホストのファイルシステムにアクセスできないため、
+> MTGO / Surveil フォルダを `docker-compose.yml` の volume に追加するか、
+> フォルダパスを `/database/...` 以下にマウントしたパスで指定する必要がある。
+> 本番環境（backend.exe）ではネイティブアクセスなので制約なし。
 
 ### AI 分析
 

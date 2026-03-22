@@ -95,6 +95,46 @@
     </div>
 
     <div class="settings__section">
+      <div class="settings__section-title">自動インポート</div>
+      <div class="settings__row">
+        <label class="settings__toggle-label">
+          <input type="checkbox" v-model="autoImportEnabled" @change="saveAutoImport" />
+          自動インポートを有効にする
+        </label>
+      </div>
+      <div class="settings__row">
+        <label class="settings__inline-label">スキャン間隔</label>
+        <input
+          v-model.number="autoImportIntervalInput"
+          type="number"
+          min="10"
+          class="settings__number-input"
+          :disabled="!autoImportEnabled"
+        />
+        <span style="font-size: 13px; color: #7a6a55;">秒</span>
+        <button
+          class="settings__btn settings__btn--primary"
+          :disabled="!autoImportEnabled"
+          @click="saveAutoImport"
+        >保存</button>
+      </div>
+      <div v-if="autoImportStatus" class="settings__row" style="flex-direction: column; align-items: flex-start; gap: 4px;">
+        <span class="settings__note" style="margin-top: 0;">
+          最終実行: {{ autoImportStatus.last_run_at ? new Date(autoImportStatus.last_run_at).toLocaleString('ja-JP') : 'なし' }}
+        </span>
+        <span v-if="autoImportStatus.last_result" class="settings__note" style="margin-top: 0;">
+          MTGO: {{ autoImportStatus.last_result.mtgo.imported }} 件追加 / {{ autoImportStatus.last_result.mtgo.skipped }} 件スキップ / {{ autoImportStatus.last_result.mtgo.errors }} 件エラー
+          &nbsp;|&nbsp;
+          MTGA: {{ autoImportStatus.last_result.mtga.imported }} 件追加 / {{ autoImportStatus.last_result.mtga.skipped }} 件スキップ / {{ autoImportStatus.last_result.mtga.errors }} 件エラー
+        </span>
+      </div>
+      <p class="settings__note">
+        MTGO クイックインポートフォルダおよび Surveil 監視フォルダを定期的にスキャンし、新しい試合を自動で取り込みます。
+        フォルダは各インポート画面で設定してください。
+      </p>
+    </div>
+
+    <div class="settings__section">
       <div class="settings__section-title">データベース</div>
       <div class="settings__row">
         <button class="settings__btn settings__btn--primary" @click="handleDownloadBackup">バックアップをダウンロード</button>
@@ -158,7 +198,7 @@
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { useToast } from '../composables/useToast'
-import { fetchSettings, updateSettings, deleteApiKey } from '../api/settings'
+import { fetchSettings, updateSettings, deleteApiKey, fetchAutoImportStatus, type AutoImportStatus } from '../api/settings'
 import { fetchPlayers } from '../api/stats'
 import { downloadBackup, restoreBackup } from '../api/backup'
 import { deleteAllMatches, deleteMatchesByRange, resetDatabase } from '../api/deletion'
@@ -188,14 +228,18 @@ const mtgaFolderInput = ref('')
 const mtgaFolderSaved = ref(false)
 const mtgaSyncing = ref(false)
 const mtgaLastSyncedAt = ref<string | null>(null)
+const autoImportEnabled = ref(false)
+const autoImportIntervalInput = ref(30)
+const autoImportStatus = ref<AutoImportStatus | null>(null)
 
 onMounted(async () => {
   try {
-    const [s, players, health, mtgaStatus] = await Promise.all([
+    const [s, players, health, mtgaStatus, aiStatus] = await Promise.all([
       fetchSettings(),
       fetchPlayers(),
       axios.get('http://localhost:18432/api/health').catch(() => null),
       getMtgaSyncStatus().catch(() => null),
+      fetchAutoImportStatus().catch(() => null),
     ])
     configured.value = s.api_key_configured
     playerList.value = players
@@ -203,6 +247,9 @@ onMounted(async () => {
     appVersion.value = health?.data?.version ?? ''
     minPlayerMatchesInput.value = s.min_player_matches ?? 1
     minDeckMatchesInput.value = s.min_deck_matches ?? 1
+    autoImportEnabled.value = s.auto_import_enabled ?? false
+    autoImportIntervalInput.value = s.auto_import_interval_sec ?? 30
+    autoImportStatus.value = aiStatus
     if (mtgaStatus?.folder) {
       mtgaFolderInput.value = mtgaStatus.folder
       mtgaFolderSaved.value = true
@@ -361,6 +408,19 @@ async function handleSyncMtgaCards() {
   }
 }
 
+
+async function saveAutoImport() {
+  try {
+    await updateSettings({
+      auto_import_enabled: autoImportEnabled.value,
+      auto_import_interval_sec: Math.max(10, autoImportIntervalInput.value),
+    })
+    autoImportStatus.value = await fetchAutoImportStatus().catch(() => null)
+    showSuccess('自動インポート設定を保存しました')
+  } catch {
+    showError('保存に失敗しました')
+  }
+}
 
 async function removeApiKey() {
   if (!confirm('APIキーを削除しますか？')) return
@@ -549,5 +609,14 @@ async function removeApiKey() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.settings__toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #2c2416;
+  cursor: pointer;
 }
 </style>

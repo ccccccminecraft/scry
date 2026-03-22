@@ -32,6 +32,8 @@ class SettingsInput(BaseModel):
     default_player: str | None = None
     min_player_matches: int | None = None
     min_deck_matches: int | None = None
+    auto_import_enabled: bool | None = None
+    auto_import_interval_sec: int | None = None
 
 
 @router.get("/settings")
@@ -41,6 +43,8 @@ def get_settings(db: Session = Depends(get_db)):
     default_player = db.get(Setting, "default_player")
     min_player = db.get(Setting, "min_player_matches")
     min_deck = db.get(Setting, "min_deck_matches")
+    auto_enabled = db.get(Setting, "auto_import_enabled")
+    auto_interval = db.get(Setting, "auto_import_interval_sec")
     return {
         "llm_provider": provider.value if provider else "claude",
         "api_key_configured": get_api_key(db) is not None,
@@ -48,6 +52,8 @@ def get_settings(db: Session = Depends(get_db)):
         "default_player": default_player.value if default_player else None,
         "min_player_matches": int(min_player.value) if min_player else 1,
         "min_deck_matches": int(min_deck.value) if min_deck else 1,
+        "auto_import_enabled": auto_enabled.value == "true" if auto_enabled else False,
+        "auto_import_interval_sec": int(auto_interval.value) if auto_interval else 30,
     }
 
 
@@ -103,6 +109,22 @@ def put_settings(body: SettingsInput, db: Session = Depends(get_db)):
             s.value = val
         else:
             db.add(Setting(key="min_deck_matches", value=val))
+
+    if body.auto_import_enabled is not None:
+        s = db.get(Setting, "auto_import_enabled")
+        val = "true" if body.auto_import_enabled else "false"
+        if s:
+            s.value = val
+        else:
+            db.add(Setting(key="auto_import_enabled", value=val))
+
+    if body.auto_import_interval_sec is not None:
+        s = db.get(Setting, "auto_import_interval_sec")
+        val = str(max(10, body.auto_import_interval_sec))
+        if s:
+            s.value = val
+        else:
+            db.add(Setting(key="auto_import_interval_sec", value=val))
 
     db.commit()
     return {"ok": True}

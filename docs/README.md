@@ -26,6 +26,7 @@ MTGOおよびMTGAの対戦ログを記録・分析するElectronアプリ。
 | ディレクトリ | 機能 | ステータス |
 |------------|------|----------|
 | [features/replay/](features/replay/) | リプレイ機能 | 設計中 |
+| [features/auto-import/](features/auto-import/) | 自動インポート（バックグラウンド定期スキャン） | 設計完了・実装前 |
 
 ### ライフサイクル
 
@@ -56,7 +57,7 @@ docs/features/<機能>/
 | 形式 | 説明 |
 |------|------|
 | MTGO `.dat` | MTGO GameLog（バイナリ形式） |
-| MTGA Surveil JSON | [surveil](../../surveil/) が出力するschema_version=2 JSON |
+| MTGA Surveil JSON | [surveil](../../surveil/) が出力するschema_version=3 JSON |
 
 ### 主要機能
 
@@ -66,6 +67,7 @@ docs/features/<機能>/
 | | MTGAログ手動インポート（Surveil JSON） |
 | | Surveil監視フォルダ登録・pending一覧・一括取り込み |
 | | クイックインポート（フォルダ保存 + mtime判定） |
+| | **自動インポート（バックグラウンド定期スキャン）** MTGO / MTGA 両対応 |
 | **対戦履歴** | 試合一覧（フィルター：プレイヤー・デッキ・フォーマット・日付） |
 | | 試合詳細（ゲーム概要・アクションログ） |
 | | デッキバージョン紐づけ・一括適用 |

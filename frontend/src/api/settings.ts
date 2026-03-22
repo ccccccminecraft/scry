@@ -7,6 +7,23 @@ export interface SettingsResponse {
   default_player: string | null
   min_player_matches: number
   min_deck_matches: number
+  auto_import_enabled: boolean
+  auto_import_interval_sec: number
+}
+
+export interface AutoImportStatus {
+  enabled: boolean
+  interval_sec: number
+  last_run_at: string | null
+  last_result: {
+    mtgo: { imported: number; skipped: number; errors: number }
+    mtga: { imported: number; skipped: number; errors: number }
+  } | null
+}
+
+export async function fetchAutoImportStatus(): Promise<AutoImportStatus> {
+  const res = await client.get<AutoImportStatus>('/api/import/auto-import/status')
+  return res.data
 }
 
 export async function fetchSettings(): Promise<SettingsResponse> {
@@ -21,6 +38,8 @@ export async function updateSettings(body: {
   default_player?: string | null
   min_player_matches?: number | null
   min_deck_matches?: number | null
+  auto_import_enabled?: boolean
+  auto_import_interval_sec?: number
 }): Promise<void> {
   await client.put('/api/settings', body)
 }

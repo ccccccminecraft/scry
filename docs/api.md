@@ -22,6 +22,8 @@
 |----------|------|------|
 | POST | `/api/import` | .dat ファイル単体インポート（multipart/form-data） |
 | POST | `/api/import/batch` | .dat ファイル一括インポート（multipart/form-data、複数ファイル） |
+| GET | `/api/import/mtgo/pending` | 未取り込みファイル一覧（`quick_import_folder` を直接スキャン） |
+| POST | `/api/import/mtgo/scan` | `quick_import_folder` の pending ファイルを一括インポート |
 
 **POST /api/import レスポンス**
 
@@ -177,11 +179,35 @@
 
 ---
 
+### 自動インポート
+
+| メソッド | パス | 説明 |
+|----------|------|------|
+| GET | `/api/import/auto-import/status` | スケジューラーの状態取得（最終実行日時・結果・有効/無効） |
+
+設定（有効/無効・間隔）は `/api/settings` の `auto_import_enabled` / `auto_import_interval_sec` で管理する。
+
+**GET /api/import/auto-import/status レスポンス**
+
+```json
+{
+  "enabled": true,
+  "interval_sec": 30,
+  "last_run_at": "2026-03-21T10:00:00Z",
+  "last_result": {
+    "mtgo": { "imported": 2, "skipped": 0, "errors": 0 },
+    "mtga": { "imported": 1, "skipped": 3, "errors": 0 }
+  }
+}
+```
+
+---
+
 ### 設定
 
 | メソッド | パス | 説明 |
 |----------|------|------|
-| GET | `/api/settings` | 設定取得（`default_player`, `llm_provider`, `quick_import_folder`, APIキー設定済みフラグ） |
+| GET | `/api/settings` | 設定取得（`default_player`, `llm_provider`, `quick_import_folder`, `auto_import_enabled`, `auto_import_interval_sec`, APIキー設定済みフラグ） |
 | PUT | `/api/settings` | 設定更新 |
 | DELETE | `/api/settings/api-key` | API キー削除 |
 
