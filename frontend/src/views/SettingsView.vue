@@ -37,63 +37,6 @@
     </div>
 
     <div class="settings__section">
-      <div class="settings__section-title">Anthropic API キー</div>
-      <div class="settings__row">
-        <span v-if="configured" class="settings__configured">設定済み ✓</span>
-        <span v-else class="settings__not-configured">未設定</span>
-      </div>
-      <div class="settings__row">
-        <input
-          v-model="apiKeyInput"
-          type="password"
-          class="settings__input"
-          placeholder="sk-ant-..."
-          autocomplete="off"
-        />
-        <button class="settings__btn settings__btn--primary" @click="saveApiKey" :disabled="!apiKeyInput.trim()">
-          保存
-        </button>
-        <button v-if="configured" class="settings__btn settings__btn--danger" @click="removeApiKey">
-          削除
-        </button>
-      </div>
-      <p class="settings__note">
-        APIキーは <a href="https://console.anthropic.com/" target="_blank">Anthropic Console</a> で取得できます。
-        入力したキーはローカルの SQLite データベースに保存されます。
-      </p>
-    </div>
-    <div class="settings__section">
-      <div class="settings__section-title">カード名データベース（MTGA）</div>
-
-      <div class="settings__subsection-title">MTGA 公式カードデータ同期</div>
-      <div class="settings__row">
-        <input
-          v-model="mtgaFolderInput"
-          type="text"
-          class="settings__input"
-          placeholder="フォルダパスを入力または右のボタンで選択"
-        />
-        <button class="settings__btn" @click="handleSelectMtgaFolder">参照...</button>
-        <button class="settings__btn settings__btn--primary" :disabled="!mtgaFolderInput.trim()" @click="handleSaveMtgaFolder">保存</button>
-      </div>
-      <div class="settings__row">
-        <button
-          class="settings__btn settings__btn--primary"
-          :disabled="mtgaSyncing || !mtgaFolderSaved"
-          @click="handleSyncMtgaCards"
-        >
-          {{ mtgaSyncing ? '同期中...' : 'MTGAデータを同期' }}
-        </button>
-        <span v-if="mtgaLastSyncedAt" class="settings__note" style="margin-top: 0;">
-          最終同期: {{ mtgaLastSyncedAt }}
-        </span>
-      </div>
-      <p class="settings__note">
-        MTGA インストールフォルダ内の Raw_CardDatabase ファイルを読み込み、カード名キャッシュを更新します。
-      </p>
-    </div>
-
-    <div class="settings__section">
       <div class="settings__section-title">自動インポート</div>
       <div class="settings__row">
         <label class="settings__toggle-label">
@@ -130,6 +73,64 @@
       <p class="settings__note">
         MTGO クイックインポートフォルダおよび Surveil 監視フォルダを定期的にスキャンし、新しい試合を自動で取り込みます。
         フォルダは各インポート画面で設定してください。
+      </p>
+    </div>
+
+    <div class="settings__section">
+      <div class="settings__section-title">カード名データベース（MTGA）</div>
+
+      <div class="settings__subsection-title">MTGA 公式カードデータ同期</div>
+      <div class="settings__row">
+        <input
+          v-model="mtgaFolderInput"
+          type="text"
+          class="settings__input"
+          placeholder="フォルダパスを入力または右のボタンで選択"
+        />
+        <button class="settings__btn" @click="handleSelectMtgaFolder">参照...</button>
+        <button class="settings__btn settings__btn--primary" :disabled="!mtgaFolderInput.trim()" @click="handleSaveMtgaFolder">保存</button>
+      </div>
+      <div class="settings__row">
+        <button
+          class="settings__btn settings__btn--primary"
+          :disabled="mtgaSyncing || !mtgaFolderSaved"
+          @click="handleSyncMtgaCards"
+        >
+          {{ mtgaSyncing ? '同期中...' : 'MTGAデータを同期' }}
+        </button>
+        <span v-if="mtgaLastSyncedAt" class="settings__note" style="margin-top: 0;">
+          最終同期: {{ mtgaLastSyncedAt }}
+        </span>
+      </div>
+      <p class="settings__note">
+        MTGA インストールフォルダ内の Raw_CardDatabase ファイルを読み込み、カード名キャッシュを更新します。
+      </p>
+    </div>
+
+    <div class="settings__section">
+      <div class="settings__section-title">Anthropic API キー</div>
+      <div class="settings__row">
+        <span v-if="configured" class="settings__configured">設定済み ✓</span>
+        <span v-else class="settings__not-configured">未設定</span>
+      </div>
+      <div class="settings__row">
+        <input
+          v-model="apiKeyInput"
+          type="password"
+          class="settings__input"
+          placeholder="sk-ant-..."
+          autocomplete="off"
+        />
+        <button class="settings__btn settings__btn--primary" @click="saveApiKey" :disabled="!apiKeyInput.trim()">
+          保存
+        </button>
+        <button v-if="configured" class="settings__btn settings__btn--danger" @click="removeApiKey">
+          削除
+        </button>
+      </div>
+      <p class="settings__note">
+        APIキーは <a href="https://console.anthropic.com/" target="_blank">Anthropic Console</a> で取得できます。
+        入力したキーはローカルの SQLite データベースに保存されます。
       </p>
     </div>
 
