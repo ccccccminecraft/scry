@@ -90,7 +90,6 @@
       </div>
       <p class="settings__note">
         MTGA インストールフォルダ内の Raw_CardDatabase ファイルを読み込み、カード名キャッシュを更新します。
-        Docker 開発環境では <code>database/</code> フォルダにファイルをコピーして <code>/database</code> を指定してください。
       </p>
     </div>
 
