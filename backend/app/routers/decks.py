@@ -417,7 +417,8 @@ def apply_definitions(
     if target_deck is not None:
         # 指定デッキ名の試合のみ対象（常に上書き）
         q = q.filter(MatchPlayer.deck_name == target_deck)
-    elif not overwrite:
+    elif not overwrite and not infer_format:
+        # infer_format=True の場合はデッキ名あり・なし両方を対象にする（フォーマット更新のため）
         q = q.filter(MatchPlayer.deck_name.is_(None))
 
     if target_format is not None:
@@ -450,7 +451,8 @@ def apply_definitions(
             detected = svc._detect_deck(mp.player_name, used_cards, mp.match.format)
             detected_format = None
 
-        if detected is not None and detected != mp.deck_name:
+        # デッキ名の更新: overwrite=True または未設定の場合のみ上書き
+        if detected is not None and (overwrite or mp.deck_name is None) and detected != mp.deck_name:
             mp.deck_name = detected
             updated += 1
 
