@@ -161,6 +161,20 @@
         </button>
         <p class="hint">ヒント: C:\Users\[ユーザー名]\AppData\Local\Apps\2.0</p>
       </div>
+
+      <!-- インポートオプション -->
+      <div class="import-options">
+        <label class="import-options__item">
+          <input type="checkbox" v-model="skipFormatInference" />
+          <span>Scryfall でのフォーマット自動推定をスキップする</span>
+        </label>
+        <p v-if="skipFormatInference" class="import-options__note">
+          ⚡ Scryfall API を呼ばないため大量インポートが高速になります。フォーマットは「不明」として保存されます。
+        </p>
+        <p v-else class="import-options__note import-options__note--muted">
+          未キャッシュのカードは Scryfall API から取得するため、初回の大量インポートは時間がかかります。
+        </p>
+      </div>
     </template>  <!-- /mtgo idle -->
 
     <!-- Scanning -->
@@ -362,6 +376,8 @@ const batchResult = ref<BatchResult | null>(null)
 const errorResults = computed(() =>
   batchResult.value?.results.filter(r => r.status === 'error') ?? [],
 )
+
+const skipFormatInference = ref(false)
 
 const checkedCount = computed(() => scanFiles.value.filter(f => f.checked).length)
 const allChecked = computed(() => scanFiles.value.length > 0 && checkedCount.value === scanFiles.value.length)
@@ -780,7 +796,7 @@ async function runImport(targets: Array<{ path: string; name: string }>) {
       try {
         const buf: Buffer = await window.electronAPI.readDatFile(target.path)
         const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
-        const result: ImportResult = await importSingleFile(target.name, ab)
+        const result: ImportResult = await importSingleFile(target.name, ab, skipFormatInference.value)
 
         results.push({ name: target.name, status: result.status, match_id: result.match_id, reason: result.reason ?? undefined })
         if (result.status === 'imported') imported++
@@ -1105,6 +1121,41 @@ function formatDate(iso: string): string {
 .importing {
   padding: 48px 0;
   text-align: center;
+}
+
+.import-options {
+  margin-top: 24px;
+  padding: 14px 16px;
+  background: #f5f0e8;
+  border: 1px solid #d8cfc0;
+  border-radius: 6px;
+}
+
+.import-options__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #2c2416;
+}
+
+.import-options__item input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.import-options__note {
+  margin: 8px 0 0 23px;
+  font-size: 12px;
+  color: #7a5c30;
+  line-height: 1.5;
+}
+
+.import-options__note--muted {
+  color: #a09080;
 }
 
 .btn--cancel {

@@ -4,7 +4,7 @@ POST /api/import/batch - .dat ファイル一括インポート
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -28,17 +28,22 @@ def cancel_import():
 
 
 @router.post("/import")
-async def import_one(file: UploadFile, db: Session = Depends(get_db)):
+async def import_one(
+    file: UploadFile,
+    skip_format_inference: bool = Form(False),
+    db: Session = Depends(get_db),
+):
     """
     .dat ファイルを1件パースして DB に保存する。
 
     - status="imported" / "skipped" → 200
     - status="error" → 400
+    - skip_format_inference=true の場合、Scryfall API を呼ばずフォーマットを unknown にする
     """
     import_status.reset_log()
     data = await file.read()
     service = ImportService(db)
-    result = service.import_one(data, file.filename or "")
+    result = service.import_one(data, file.filename or "", skip_format_inference=skip_format_inference)
 
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["reason"] or "Import failed")

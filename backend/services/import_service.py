@@ -84,9 +84,20 @@ class ImportService:
         self._parser = MTGOLogParser()
         self._scryfall = ScryfallClient(db)
 
-    def import_one(self, data: bytes, filename: str) -> ImportResult:
+    def import_one(
+        self,
+        data: bytes,
+        filename: str,
+        skip_format_inference: bool = False,
+    ) -> ImportResult:
         """
         バイト列を受け取りパース・保存する。
+
+        Parameters
+        ----------
+        skip_format_inference : bool
+            True の場合、Scryfall API を呼ばずフォーマットを "unknown" にする。
+            大量インポート時の高速化に使用する。
 
         Returns
         -------
@@ -129,9 +140,13 @@ class ImportService:
         try:
             _status.update_step("saving")
             self._save(parsed)
-            _status.update_step("scryfall")
-            fmt = self._infer_format(parsed)
-            _status.append_log(f"  フォーマット判定: {fmt}")
+            if skip_format_inference:
+                fmt = "unknown"
+                _status.append_log(f"  フォーマット推定: スキップ")
+            else:
+                _status.update_step("scryfall")
+                fmt = self._infer_format(parsed)
+                _status.append_log(f"  フォーマット判定: {fmt}")
             match = self._db.get(Match, match_id)
             match.format = fmt
 
