@@ -71,3 +71,17 @@ export async function importSurveilFile(name: string, data: ArrayBuffer): Promis
   const res = await client.post<ImportResult>('/api/import/surveil', formData, { timeout: 30000 })
   return res.data
 }
+
+export interface ImportStatus {
+  active: boolean
+  filename: string
+  step: string
+  scryfall_done: number
+  scryfall_total: number
+  log: string[]
+}
+
+export async function getImportStatus(): Promise<ImportStatus> {
+  const res = await client.get<ImportStatus>('/api/import/status')
+  return res.data
+}

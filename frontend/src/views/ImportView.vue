@@ -208,6 +208,9 @@
       <div class="progress-bar">
         <div class="progress-bar__fill" :style="{ width: progressPct + '%' }"></div>
       </div>
+      <div v-if="importLog.length > 0" class="import-log" ref="importLogEl">
+        <div v-for="(line, i) in importLog" :key="i" class="import-log__line">{{ line }}</div>
+      </div>
     </div>
 
     <!-- Batch result -->
@@ -251,7 +254,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import {
   importSingleFile,
   importSurveilFile,
@@ -259,6 +262,7 @@ import {
   setSurveilFolder,
   clearSurveilFolder,
   getSurveilImportedIds,
+  getImportStatus,
   type ImportResult,
 } from '../api/import'
 import { fetchSettings, updateSettings } from '../api/settings'
@@ -321,6 +325,15 @@ const importTotal = ref(0)
 const progressPct = computed(() =>
   importTotal.value > 0 ? Math.round((importDone.value / importTotal.value) * 100) : 0,
 )
+const importLog = ref<string[]>([])
+const importLogEl = ref<HTMLElement | null>(null)
+
+watch(importLog, async () => {
+  await nextTick()
+  if (importLogEl.value) {
+    importLogEl.value.scrollTop = importLogEl.value.scrollHeight
+  }
+}, { deep: true })
 
 // batch result
 interface BatchResult {
@@ -362,6 +375,7 @@ function reset() {
   scanFiles.value = []
   importDone.value = 0
   importTotal.value = 0
+  importLog.value = []
   batchResult.value = null
   // 最終インポート日時を再取得
   fetchLatestMatchDate('mtgo').then(d => { latestDate.value = d }).catch(() => {})
@@ -552,28 +566,44 @@ async function runSurveilImport(targets: Array<{ path: string; name: string }>) 
   state.value = 'importing'
   importDone.value = 0
   importTotal.value = targets.length
+  importLog.value = []
 
   let imported = 0
   let skipped = 0
   let errors = 0
   const results: BatchResult['results'] = []
 
-  for (const target of targets) {
+  const pollInterval = setInterval(async () => {
     try {
-      const buf: Buffer = await window.electronAPI.readDatFile(target.path)
-      const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
-      const result: ImportResult = await importSurveilFile(target.name, ab)
+      const status = await getImportStatus()
+      importLog.value = status.log
+    } catch { /* ignore */ }
+  }, 500)
 
-      results.push({ name: target.name, status: result.status, match_id: result.match_id, reason: result.reason ?? undefined })
-      if (result.status === 'imported') imported++
-      else if (result.status === 'skipped') skipped++
-      else errors++
-    } catch (e) {
-      const reason = e instanceof Error ? e.message : '不明なエラー'
-      results.push({ name: target.name, status: 'error', reason })
-      errors++
+  try {
+    for (const target of targets) {
+      try {
+        const buf: Buffer = await window.electronAPI.readDatFile(target.path)
+        const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
+        const result: ImportResult = await importSurveilFile(target.name, ab)
+
+        results.push({ name: target.name, status: result.status, match_id: result.match_id, reason: result.reason ?? undefined })
+        if (result.status === 'imported') imported++
+        else if (result.status === 'skipped') skipped++
+        else errors++
+      } catch (e) {
+        const reason = e instanceof Error ? e.message : '不明なエラー'
+        results.push({ name: target.name, status: 'error', reason })
+        errors++
+      }
+      importDone.value++
     }
-    importDone.value++
+  } finally {
+    clearInterval(pollInterval)
+    try {
+      const status = await getImportStatus()
+      importLog.value = status.log
+    } catch { /* ignore */ }
   }
 
   batchResult.value = { imported, skipped, errors, results }
@@ -686,28 +716,44 @@ async function runImport(targets: Array<{ path: string; name: string }>) {
   state.value = 'importing'
   importDone.value = 0
   importTotal.value = targets.length
+  importLog.value = []
 
   let imported = 0
   let skipped = 0
   let errors = 0
   const results: BatchResult['results'] = []
 
-  for (const target of targets) {
+  const pollInterval = setInterval(async () => {
     try {
-      const buf: Buffer = await window.electronAPI.readDatFile(target.path)
-      const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
-      const result: ImportResult = await importSingleFile(target.name, ab)
+      const status = await getImportStatus()
+      importLog.value = status.log
+    } catch { /* ignore */ }
+  }, 500)
 
-      results.push({ name: target.name, status: result.status, match_id: result.match_id, reason: result.reason ?? undefined })
-      if (result.status === 'imported') imported++
-      else if (result.status === 'skipped') skipped++
-      else errors++
-    } catch (e) {
-      const reason = e instanceof Error ? e.message : '不明なエラー'
-      results.push({ name: target.name, status: 'error', reason })
-      errors++
+  try {
+    for (const target of targets) {
+      try {
+        const buf: Buffer = await window.electronAPI.readDatFile(target.path)
+        const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
+        const result: ImportResult = await importSingleFile(target.name, ab)
+
+        results.push({ name: target.name, status: result.status, match_id: result.match_id, reason: result.reason ?? undefined })
+        if (result.status === 'imported') imported++
+        else if (result.status === 'skipped') skipped++
+        else errors++
+      } catch (e) {
+        const reason = e instanceof Error ? e.message : '不明なエラー'
+        results.push({ name: target.name, status: 'error', reason })
+        errors++
+      }
+      importDone.value++
     }
-    importDone.value++
+  } finally {
+    clearInterval(pollInterval)
+    try {
+      const status = await getImportStatus()
+      importLog.value = status.log
+    } catch { /* ignore */ }
   }
 
   batchResult.value = { imported, skipped, errors, results }
@@ -1014,6 +1060,26 @@ function formatDate(iso: string): string {
 .importing {
   padding: 48px 0;
   text-align: center;
+}
+
+.import-log {
+  margin: 16px auto 0;
+  max-width: 640px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: #1e1a14;
+  border: 1px solid #3a3020;
+  border-radius: 4px;
+  padding: 10px 14px;
+  text-align: left;
+}
+
+.import-log__line {
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #c8bfa8;
+  white-space: pre;
 }
 
 .importing__label {

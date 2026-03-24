@@ -93,11 +93,18 @@ class ImportService:
         ImportResult
             status が "imported" / "skipped" / "error" のいずれか
         """
+        import services.import_status as _status
+
+        _status.start(filename)
+        _status.append_log(f"[{filename}] 処理中...")
+
         # 1. パース
         try:
             parsed = self._parser.parse_bytes(data)
         except ParseError as e:
             logger.warning("ParseError for %s: %s", filename, e)
+            _status.append_log(f"  パースエラー: {e}")
+            _status.finish()
             return ImportResult(
                 match_id="",
                 status="error",
@@ -109,6 +116,8 @@ class ImportService:
 
         # 2. 重複チェック
         if self._db.get(Match, match_id) is not None:
+            _status.append_log(f"  スキップ（重複）")
+            _status.finish()
             return ImportResult(
                 match_id=match_id,
                 status="skipped",
@@ -118,8 +127,11 @@ class ImportService:
 
         # 3. 保存・フォーマット推定・デッキ名再判定・commit
         try:
+            _status.update_step("saving")
             self._save(parsed)
+            _status.update_step("scryfall")
             fmt = self._infer_format(parsed)
+            _status.append_log(f"  フォーマット判定: {fmt}")
             match = self._db.get(Match, match_id)
             match.format = fmt
 
@@ -137,15 +149,20 @@ class ImportService:
                     mp.deck_name = refined
 
             self._db.commit()
+            _status.append_log(f"  保存完了")
         except Exception as e:
             self._db.rollback()
             logger.exception("Import failed for %s: %s", filename, e)
+            _status.append_log(f"  エラー: {e}")
+            _status.finish()
             return ImportResult(
                 match_id=match_id,
                 status="error",
                 format=None,
                 reason=str(e),
             )
+        finally:
+            _status.finish()
 
         return ImportResult(
             match_id=match_id,
@@ -229,6 +246,8 @@ class ImportService:
         全ゲームの play / cast アクションからカード名を収集し、
         Scryfall の legality 情報をもとにフォーマットを推定する。
         """
+        import services.import_status as _status
+
         card_names: set[str] = set()
         for game in parsed["games"]:
             for act in game["actions"]:
@@ -238,7 +257,17 @@ class ImportService:
         if not card_names:
             return "unknown"
 
-        legalities = self._scryfall.fetch_legalities(list(card_names))
+        _status.append_log(f"  フォーマット推定中... ({len(card_names)} 種のカード)")
+
+        def _on_scryfall_progress(done: int, total: int) -> None:
+            _status.update_scryfall(done, total)
+            if total > 0 and (done % 10 == 0 or done == total):
+                _status.append_log(f"  Scryfall 取得中: {done} / {total}")
+
+        legalities = self._scryfall.fetch_legalities(
+            list(card_names),
+            progress_callback=_on_scryfall_progress,
+        )
 
         if not legalities:
             return "unknown"
