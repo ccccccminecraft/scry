@@ -22,6 +22,7 @@ import services.import_status as import_status
 from models.cache import Setting
 from models.core import Match
 from services.import_service import SurveilImportService
+from services.scryfall_settings import is_scryfall_enabled
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -128,7 +129,7 @@ def scan_and_import(background_tasks: BackgroundTasks, db: Session = Depends(get
         if p.stem not in existing_ids
     ]
 
-    return _run_batch(targets, db, background_tasks)
+    return _run_batch(targets, db, background_tasks, skip_scryfall=not is_scryfall_enabled(db))
 
 
 # ─── 単体アップロード ─────────────────────────────────────────────────────────
@@ -153,7 +154,7 @@ async def import_surveil_file(
         raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
 
     service = SurveilImportService(db)
-    result = service.import_one(data, file.filename or "", background_tasks)
+    result = service.import_one(data, file.filename or "", background_tasks, skip_scryfall=not is_scryfall_enabled(db))
 
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["reason"] or "Import failed")
@@ -167,6 +168,7 @@ def _run_batch(
     targets: list[Path],
     db: Session,
     background_tasks: BackgroundTasks | None = None,
+    skip_scryfall: bool = False,
 ) -> dict:
     """ファイルパスリストを順次インポートしてバッチ結果を返す。"""
     imported = skipped = errors = 0
@@ -183,7 +185,7 @@ def _run_batch(
 
         # ファイルごとに新しいサービスインスタンス（独立トランザクション）
         service = SurveilImportService(db)
-        result = service.import_one(data, path.name, background_tasks)
+        result = service.import_one(data, path.name, background_tasks, skip_scryfall=skip_scryfall)
 
         entry: dict = {"filename": path.name, "status": result["status"]}
         if result["status"] == "imported":

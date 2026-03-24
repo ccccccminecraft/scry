@@ -35,6 +35,7 @@ class SettingsInput(BaseModel):
     auto_import_enabled: bool | None = None
     auto_import_interval_sec: int | None = None
     onboarding_completed: bool | None = None
+    scryfall_enabled: bool | None = None
 
 
 @router.get("/settings")
@@ -47,6 +48,7 @@ def get_settings(db: Session = Depends(get_db)):
     auto_enabled = db.get(Setting, "auto_import_enabled")
     auto_interval = db.get(Setting, "auto_import_interval_sec")
     onboarding = db.get(Setting, "onboarding_completed")
+    scryfall_enabled = db.get(Setting, "scryfall_enabled")
     return {
         "llm_provider": provider.value if provider else "claude",
         "api_key_configured": get_api_key(db) is not None,
@@ -57,6 +59,7 @@ def get_settings(db: Session = Depends(get_db)):
         "auto_import_enabled": auto_enabled.value == "true" if auto_enabled else False,
         "auto_import_interval_sec": int(auto_interval.value) if auto_interval else 30,
         "onboarding_completed": onboarding.value == "1" if onboarding else False,
+        "scryfall_enabled": scryfall_enabled.value == "true" if scryfall_enabled else False,
     }
 
 
@@ -136,6 +139,14 @@ def put_settings(body: SettingsInput, db: Session = Depends(get_db)):
             s.value = val
         else:
             db.add(Setting(key="onboarding_completed", value=val))
+
+    if body.scryfall_enabled is not None:
+        s = db.get(Setting, "scryfall_enabled")
+        val = "true" if body.scryfall_enabled else "false"
+        if s:
+            s.value = val
+        else:
+            db.add(Setting(key="scryfall_enabled", value=val))
 
     db.commit()
     return {"ok": True}

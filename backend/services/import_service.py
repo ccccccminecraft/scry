@@ -379,10 +379,16 @@ class SurveilImportService:
         data: dict,
         filename: str,
         background_tasks: BackgroundTasks | None = None,
+        skip_scryfall: bool = False,
     ) -> ImportResult:
         """
         Surveil 出力ファイルをデシリアライズした dict を受け取りパース・保存する。
         schema_version=2 と schema_version=3 の両方に対応する。
+
+        Parameters
+        ----------
+        skip_scryfall : bool
+            True の場合、Scryfall API を呼ばずフォーマット推定のフォールバックをスキップする。
 
         Returns
         -------
@@ -390,7 +396,7 @@ class SurveilImportService:
             status が "imported" / "skipped" / "error" のいずれか
         """
         if data.get("schema_version") == 3:
-            return self._import_v3(data, filename, background_tasks)
+            return self._import_v3(data, filename, background_tasks, skip_scryfall=skip_scryfall)
 
         try:
             parsed = parse_surveil_json(data)
@@ -406,7 +412,7 @@ class SurveilImportService:
 
         try:
             self._save(parsed)
-            fmt = self._infer_format_from_deck(parsed["deck_main"])
+            fmt = self._infer_format_from_deck(parsed["deck_main"], skip_scryfall=skip_scryfall)
             match = self._db.get(Match, match_id)
             match.format = fmt
 
@@ -495,6 +501,7 @@ class SurveilImportService:
         data: dict,
         filename: str,
         background_tasks: BackgroundTasks | None = None,
+        skip_scryfall: bool = False,
     ) -> ImportResult:
         """schema_version=3（GRE メッセージ形式）のインポート処理。"""
         try:
@@ -520,7 +527,7 @@ class SurveilImportService:
             if fmt is None:
                 fmt = self._infer_format_from_grp_ids(gre_result["deck_grp_ids"])
             if fmt is None:
-                fmt = self._infer_format_from_deck(parsed["deck_main"])
+                fmt = self._infer_format_from_deck(parsed["deck_main"], skip_scryfall=skip_scryfall)
             match = self._db.get(Match, match_id)
             match.format = fmt
 
@@ -546,8 +553,8 @@ class SurveilImportService:
                     for mp in match.players:
                         if mp.player_name == parsed["self_player"]:
                             mp.deck_version_id = version.id
-                    # Scryfall ID・画像URLをバックグラウンドで補完
-                    if background_tasks is not None:
+                    # Scryfall ID・画像URLをバックグラウンドで補完（Scryfall 有効時のみ）
+                    if background_tasks is not None and not skip_scryfall:
                         from services.card_image_service import fill_scryfall_ids
                         card_ids = [vc.card_id for vc in version.cards]
                         background_tasks.add_task(fill_scryfall_ids, card_ids)
@@ -860,7 +867,7 @@ class SurveilImportService:
         # Pioneer-legal → pioneer
         return "pioneer"
 
-    def _infer_format_from_deck(self, deck_main: dict[str, int]) -> str:
+    def _infer_format_from_deck(self, deck_main: dict[str, int], *, skip_scryfall: bool = False) -> str:
         """
         デッキリスト（card_name → count）から Scryfall で legality を確認し
         MTGA_FORMAT_PRIORITY 順にフォーマットを返す。基本土地は除外する。
@@ -870,6 +877,9 @@ class SurveilImportService:
           現状は 60 枚未満を Limited とみなして "unknown" を返すが、実際の Limited ログで
           検証後に条件を見直すこと。
         """
+        if skip_scryfall:
+            return "unknown"
+
         # 60 枚未満は Limited（Draft/Sealed）とみなしてスキップ
         if sum(deck_main.values()) < 60:
             return "unknown"

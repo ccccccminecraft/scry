@@ -40,6 +40,23 @@
     </div>
 
     <div class="settings__section">
+      <div class="settings__section-title">Scryfall API</div>
+      <div class="settings__row">
+        <label class="settings__toggle-label">
+          <input type="checkbox" v-model="scryfallEnabled" @change="saveScryfallEnabled" />
+          Scryfall API を利用する
+        </label>
+      </div>
+      <p class="settings__note">
+        オンにすると以下の機能が有効になります:<br />
+        ・MTGOインポート時のフォーマット自動推定<br />
+        ・MTGAインポート時のフォーマット自動推定（フォールバック）<br />
+        ・デッキカードの画像自動取得<br />
+        ※ Scryfall API への外部通信が発生します。オフの場合はインポートが高速化されます。
+      </p>
+    </div>
+
+    <div class="settings__section">
       <div class="settings__section-title">自動インポート</div>
       <div class="settings__row">
         <label class="settings__toggle-label">
@@ -241,6 +258,7 @@ const mtgaLastSyncedAt = ref<string | null>(null)
 const autoImportEnabled = ref(false)
 const autoImportIntervalInput = ref(30)
 const autoImportStatus = ref<AutoImportStatus | null>(null)
+const scryfallEnabled = ref(false)
 
 onMounted(async () => {
   try {
@@ -260,6 +278,7 @@ onMounted(async () => {
     autoImportEnabled.value = s.auto_import_enabled ?? false
     autoImportIntervalInput.value = s.auto_import_interval_sec ?? 30
     autoImportStatus.value = aiStatus
+    scryfallEnabled.value = s.scryfall_enabled ?? false
     if (mtgaStatus?.folder) {
       mtgaFolderInput.value = mtgaStatus.folder
       mtgaFolderSaved.value = true
@@ -426,6 +445,15 @@ async function handleSyncMtgaCards() {
   }
 }
 
+
+async function saveScryfallEnabled() {
+  try {
+    await updateSettings({ scryfall_enabled: scryfallEnabled.value })
+    showSuccess(scryfallEnabled.value ? 'Scryfall API を有効にしました' : 'Scryfall API を無効にしました')
+  } catch {
+    showError('保存に失敗しました')
+  }
+}
 
 async function saveAutoImport() {
   try {

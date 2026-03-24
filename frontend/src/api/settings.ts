@@ -10,6 +10,7 @@ export interface SettingsResponse {
   auto_import_enabled: boolean
   auto_import_interval_sec: number
   onboarding_completed: boolean
+  scryfall_enabled: boolean
 }
 
 export interface AutoImportStatus {
@@ -42,6 +43,7 @@ export async function updateSettings(body: {
   auto_import_enabled?: boolean
   auto_import_interval_sec?: number
   onboarding_completed?: boolean
+  scryfall_enabled?: boolean
 }): Promise<void> {
   await client.put('/api/settings', body)
 }

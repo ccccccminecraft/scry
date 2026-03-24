@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models.decklist import Card, Deck, DeckVersion, DeckVersionCard
 from services.card_image_service import fill_scryfall_ids, get_card_image
+from services.scryfall_settings import is_scryfall_enabled
 
 router = APIRouter()
 
@@ -309,8 +310,9 @@ def create_version_text(
         raise HTTPException(status_code=400, detail=str(e))
 
     version = _save_version(db, deck_id, body.memo or "", parsed)
-    card_ids = [vc.card_id for vc in version.cards]
-    background_tasks.add_task(fill_scryfall_ids, card_ids)
+    if is_scryfall_enabled(db):
+        card_ids = [vc.card_id for vc in version.cards]
+        background_tasks.add_task(fill_scryfall_ids, card_ids)
     return _version_to_detail(version)
 
 
@@ -331,8 +333,9 @@ async def create_version_dek(
         raise HTTPException(status_code=400, detail=str(e))
 
     version = _save_version(db, deck_id, memo, parsed)
-    card_ids = [vc.card_id for vc in version.cards]
-    background_tasks.add_task(fill_scryfall_ids, card_ids)
+    if is_scryfall_enabled(db):
+        card_ids = [vc.card_id for vc in version.cards]
+        background_tasks.add_task(fill_scryfall_ids, card_ids)
     return _version_to_detail(version)
 
 
@@ -375,8 +378,9 @@ def update_version(
     db.commit()
     db.refresh(v)
 
-    card_ids = [vc.card_id for vc in v.cards]
-    background_tasks.add_task(fill_scryfall_ids, card_ids)
+    if is_scryfall_enabled(db):
+        card_ids = [vc.card_id for vc in v.cards]
+        background_tasks.add_task(fill_scryfall_ids, card_ids)
     return _version_to_detail(v)
 
 
@@ -421,9 +425,17 @@ def unarchive_version(deck_id: int, version_id: int, db: Session = Depends(get_d
 # ---------------------------------------------------------------------------
 
 @router.get("/cards/{scryfall_id}/image")
-async def get_image(scryfall_id: str, size: str = "small"):
+async def get_image(scryfall_id: str, size: str = "small", db: Session = Depends(get_db)):
     if size not in ("small", "normal"):
         size = "small"
+    # キャッシュ済み画像は Scryfall 設定に関わらず返す
+    from services.card_image_service import get_image_cache_dir
+    from pathlib import Path
+    cache_path = get_image_cache_dir() / size / f"{scryfall_id}.jpg"
+    if cache_path.exists():
+        return FileResponse(str(cache_path), media_type="image/jpeg")
+    if not is_scryfall_enabled(db):
+        raise HTTPException(status_code=404, detail="Scryfall API is disabled")
     try:
         path = await get_card_image(scryfall_id, size)
         return FileResponse(str(path), media_type="image/jpeg")

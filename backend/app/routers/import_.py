@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from services.import_service import ImportService
+from services.scryfall_settings import is_scryfall_enabled
 import services.import_status as import_status
 
 router = APIRouter()
@@ -43,7 +44,9 @@ async def import_one(
     import_status.reset_log()
     data = await file.read()
     service = ImportService(db)
-    result = service.import_one(data, file.filename or "", skip_format_inference=skip_format_inference)
+    # グローバル設定が OFF の場合は常にスキップ
+    effective_skip = skip_format_inference or not is_scryfall_enabled(db)
+    result = service.import_one(data, file.filename or "", skip_format_inference=effective_skip)
 
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["reason"] or "Import failed")
