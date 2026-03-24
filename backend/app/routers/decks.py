@@ -378,11 +378,19 @@ async def import_deck_definitions(
     return {"imported": imported, "skipped": skipped, "errors": errors}
 
 
+@router.get("/decks/unknown-match-count")
+def get_unknown_match_count(db: Session = Depends(get_db)):
+    """フォーマットが unknown の試合件数を返す。"""
+    count = db.query(Match).filter(Match.format == "unknown").count()
+    return {"count": count}
+
+
 @router.post("/decks/apply-definitions")
 def apply_definitions(
     overwrite: bool = False,
     target_deck: str | None = None,
     target_format: str | None = None,
+    infer_format: bool = False,
     db: Session = Depends(get_db),
 ):
     """
@@ -392,6 +400,7 @@ def apply_definitions(
     - overwrite=true : 全 MatchPlayer を対象（既存のデッキ名も上書き）
     - target_deck 指定時: そのデッキ名の MatchPlayer のみ対象（常に上書き）
     - target_format 指定時: そのフォーマットの試合のみ対象
+    - infer_format=true: マッチしたデッキ定義の format で Match.format も更新する
     """
     from sqlalchemy.orm import selectinload
     from models.core import Game, Action
@@ -417,6 +426,7 @@ def apply_definitions(
     match_players = q.all()
 
     updated = 0
+    format_updated = 0
     for mp in match_players:
         if mp.match is None:
             continue
@@ -432,13 +442,24 @@ def apply_definitions(
                 ):
                     used_cards.add(action.card_name)
 
-        detected = svc._detect_deck(mp.player_name, used_cards, mp.match.format)
+        if infer_format:
+            detected, detected_format = svc._detect_deck(
+                mp.player_name, used_cards, mp.match.format, with_format=True
+            )
+        else:
+            detected = svc._detect_deck(mp.player_name, used_cards, mp.match.format)
+            detected_format = None
+
         if detected is not None and detected != mp.deck_name:
             mp.deck_name = detected
             updated += 1
 
+        if infer_format and detected_format and mp.match.format == "unknown":
+            mp.match.format = detected_format
+            format_updated += 1
+
     db.commit()
-    return {"updated": updated, "skipped": len(match_players) - updated}
+    return {"updated": updated, "format_updated": format_updated, "skipped": len(match_players) - updated}
 
 
 @router.get("/deck-definitions/export")

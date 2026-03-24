@@ -253,8 +253,8 @@ class ImportService:
 
             self._db.flush()
 
-    def _detect_deck(self, player_name: str, used_cards: set[str], fmt: str | None) -> str | None:
-        return _detect_deck(self._db, player_name, used_cards, fmt)
+    def _detect_deck(self, player_name: str, used_cards: set[str], fmt: str | None, *, with_format: bool = False):
+        return _detect_deck(self._db, player_name, used_cards, fmt, with_format=with_format)
 
     def _infer_format(self, parsed: ParseResult) -> str:
         """
@@ -304,11 +304,16 @@ def _detect_deck(
     player_name: str,
     used_cards: set[str],
     fmt: str | None,
-) -> str | None:
+    *,
+    with_format: bool = False,
+) -> str | None | tuple[str | None, str | None]:
     """
     使用カードとデッキ定義を照合してデッキ名を返す。
     優先順位: プレイヤー固有定義 → 共通定義（player_name IS NULL）
     マッチなしの場合は None を返す。
+
+    with_format=True の場合は (deck_name, definition_format) のタプルを返す。
+    "unknown" フォーマットはフォーマット未指定として扱い、全定義を照合対象にする。
     """
     definitions = (
         db.query(DeckDefinition)
@@ -324,14 +329,18 @@ def _detect_deck(
     )
 
     if not definitions:
-        return None
+        return (None, None) if with_format else None
+
+    # "unknown" はフォーマット不明なので全定義を照合対象にする
+    effective_fmt = None if fmt == "unknown" else fmt
 
     best_name: str | None = None
+    best_format: str | None = None
     best_count: int = 0
     best_is_player: bool = False
 
     for defn in definitions:
-        if defn.format and fmt and defn.format != fmt:
+        if defn.format and effective_fmt and defn.format != effective_fmt:
             continue
         exclude_cards = {c.card_name for c in defn.cards if c.is_exclude}
         if exclude_cards & used_cards:
@@ -347,9 +356,12 @@ def _detect_deck(
                 or (match_count == best_count and is_player and not best_is_player)
             ):
                 best_name = defn.deck_name
+                best_format = defn.format
                 best_count = match_count
                 best_is_player = is_player
 
+    if with_format:
+        return best_name, best_format
     return best_name
 
 

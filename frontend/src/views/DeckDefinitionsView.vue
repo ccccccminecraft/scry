@@ -114,6 +114,36 @@
         >{{ applying ? '適用中...' : '指定デッキに適用（上書き）' }}</button>
       </div>
       <p class="deck-def__apply-note">指定したデッキ名の試合を対象に、デッキ定義を再判定して上書きします。</p>
+      <div class="deck-def__apply-divider"></div>
+      <!-- unknown 試合への適用 -->
+      <div class="deck-def__unknown-block">
+        <div class="deck-def__unknown-header">
+          <span class="deck-def__unknown-title">フォーマットが「unknown」の試合に適用</span>
+          <span class="deck-def__unknown-count">
+            対象:
+            <span v-if="unknownCount === null">—</span>
+            <strong v-else>{{ unknownCount }} 件</strong>
+            <button class="deck-def__btn-link" @click="loadUnknownCount">更新</button>
+          </span>
+        </div>
+        <div class="deck-def__unknown-options">
+          <label class="deck-def__check-label">
+            <input type="checkbox" v-model="unknownApplyDeckName" />
+            デッキ名を設定する（未設定の試合のみ）
+          </label>
+          <label class="deck-def__check-label">
+            <input type="checkbox" v-model="unknownInferFormat" />
+            フォーマットをデッキ定義から推定する
+            <span class="deck-def__check-note">※ format が設定されたデッキ定義にのみ適用</span>
+          </label>
+        </div>
+        <button
+          class="deck-def__btn deck-def__btn--primary"
+          style="align-self: flex-start;"
+          :disabled="applyingUnknown || unknownCount === 0"
+          @click="runApplyUnknown"
+        >{{ applyingUnknown ? '適用中...' : 'unknown の試合に適用する' }}</button>
+      </div>
     </div>
 
     <!-- Claude 生成 -->
@@ -277,7 +307,7 @@ import { useToast } from '../composables/useToast'
 import {
   fetchDeckDefinitions, createDeckDefinition, updateDeckDefinition,
   deleteDeckDefinition, deckBulkUpdate, importDeckDefinitions, exportDeckDefinitions,
-  generateDeckDefinitions, applyDeckDefinitions,
+  generateDeckDefinitions, applyDeckDefinitions, getUnknownMatchCount,
   type DeckDefinition, type DeckDefinitionInput, type GeneratedDeckPayload,
 } from '../api/decks'
 import { fetchPlayers, fetchFormats } from '../api/stats'
@@ -325,6 +355,47 @@ async function onConfirm() {
 const applying = ref(false)
 const applyTargetDeck = ref('')
 const applyTargetFormat = ref('')
+
+// unknown 試合への適用
+const unknownCount = ref<number | null>(null)
+const unknownApplyDeckName = ref(true)
+const unknownInferFormat = ref(true)
+const applyingUnknown = ref(false)
+
+async function loadUnknownCount() {
+  try {
+    unknownCount.value = await getUnknownMatchCount()
+  } catch {
+    unknownCount.value = null
+  }
+}
+
+function runApplyUnknown() {
+  if (unknownCount.value === 0) return
+  const lines: string[] = ['フォーマットが「unknown」の試合にデッキ定義を照合します。']
+  if (unknownApplyDeckName.value) lines.push('・デッキ名が未設定の試合にデッキ名を設定します。')
+  if (unknownInferFormat.value) lines.push('・デッキ定義に format が設定されている場合、フォーマットも更新します。')
+  showConfirm(lines.join('\n'), '実行', async () => {
+    applyingUnknown.value = true
+    try {
+      const res = await applyDeckDefinitions(
+        false,
+        undefined,
+        'unknown',
+        unknownInferFormat.value,
+      )
+      const parts = [`デッキ名更新: ${res.updated} 件`]
+      if (unknownInferFormat.value) parts.push(`フォーマット更新: ${res.format_updated} 件`)
+      parts.push(`対象外: ${res.skipped} 件`)
+      showSuccess(parts.join('　'))
+      unknownCount.value = await getUnknownMatchCount()
+    } catch (e) {
+      showError(e instanceof Error ? e.message : '適用に失敗しました')
+    } finally {
+      applyingUnknown.value = false
+    }
+  })
+}
 
 function runApplyTargetDeck() {
   const deck = applyTargetDeck.value.trim()
@@ -572,6 +643,7 @@ onMounted(async () => {
     definitions.value = defs
     playerList.value = players
     formatList.value = formats
+    loadUnknownCount()
   } catch {
     showError('データの取得に失敗しました')
   }
@@ -644,6 +716,68 @@ onMounted(async () => {
   border-top: 1px solid #e0d8c8;
   margin: 12px 0;
   width: 100%;
+}
+
+.deck-def__unknown-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  background: #f5f0e8;
+  border: 1px solid #d8cfc0;
+  border-radius: 6px;
+  width: 100%;
+}
+
+.deck-def__unknown-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.deck-def__unknown-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2c2416;
+}
+
+.deck-def__unknown-count {
+  font-size: 12px;
+  color: #7a6a55;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.deck-def__btn-link {
+  background: none;
+  border: none;
+  color: #4a6fa5;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.deck-def__unknown-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.deck-def__check-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #2c2416;
+  cursor: pointer;
+}
+
+.deck-def__check-note {
+  font-size: 11px;
+  color: #9a8a75;
+  margin-left: 2px;
 }
 
 .deck-def__bulk-form {
