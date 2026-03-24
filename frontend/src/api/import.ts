@@ -85,3 +85,7 @@ export async function getImportStatus(): Promise<ImportStatus> {
   const res = await client.get<ImportStatus>('/api/import/status')
   return res.data
 }
+
+export async function cancelImport(): Promise<void> {
+  await client.post('/api/import/cancel')
+}

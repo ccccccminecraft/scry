@@ -208,6 +208,13 @@
       <div class="progress-bar">
         <div class="progress-bar__fill" :style="{ width: progressPct + '%' }"></div>
       </div>
+      <button
+        class="btn btn--cancel"
+        :disabled="cancelling"
+        @click="handleCancel"
+      >
+        {{ cancelling ? '中断中...' : '中断する' }}
+      </button>
       <div v-if="importLog.length > 0" class="import-log" ref="importLogEl">
         <div v-for="(line, i) in importLog" :key="i" class="import-log__line">{{ line }}</div>
       </div>
@@ -216,7 +223,8 @@
     <!-- Batch result -->
     <template v-else-if="state === 'batch_result'">
       <div class="result">
-        <p class="result__title">✅ インポート完了</p>
+        <p v-if="cancelRequested" class="result__title result__title--cancelled">⚠️ インポートを中断しました</p>
+        <p v-else class="result__title">✅ インポート完了</p>
 
         <table class="result__table">
           <tr>
@@ -226,6 +234,10 @@
           <tr>
             <td class="result__label">スキップ（重複）</td>
             <td class="result__count">{{ batchResult!.skipped }} 件</td>
+          </tr>
+          <tr v-if="batchResult!.cancelled > 0">
+            <td class="result__label">中断スキップ</td>
+            <td class="result__count">{{ batchResult!.cancelled }} 件</td>
           </tr>
           <tr>
             <td class="result__label">エラー</td>
@@ -263,6 +275,7 @@ import {
   clearSurveilFolder,
   getSurveilImportedIds,
   getImportStatus,
+  cancelImport,
   type ImportResult,
 } from '../api/import'
 import { fetchSettings, updateSettings } from '../api/settings'
@@ -327,6 +340,8 @@ const progressPct = computed(() =>
 )
 const importLog = ref<string[]>([])
 const importLogEl = ref<HTMLElement | null>(null)
+const cancelRequested = ref(false)
+const cancelling = ref(false)
 
 watch(importLog, async () => {
   await nextTick()
@@ -339,6 +354,7 @@ watch(importLog, async () => {
 interface BatchResult {
   imported: number
   skipped: number
+  cancelled: number
   errors: number
   results: Array<{ name: string; status: string; match_id?: string; reason?: string }>
 }
@@ -376,6 +392,8 @@ function reset() {
   importDone.value = 0
   importTotal.value = 0
   importLog.value = []
+  cancelRequested.value = false
+  cancelling.value = false
   batchResult.value = null
   // 最終インポート日時を再取得
   fetchLatestMatchDate('mtgo').then(d => { latestDate.value = d }).catch(() => {})
@@ -567,9 +585,12 @@ async function runSurveilImport(targets: Array<{ path: string; name: string }>) 
   importDone.value = 0
   importTotal.value = targets.length
   importLog.value = []
+  cancelRequested.value = false
+  cancelling.value = false
 
   let imported = 0
   let skipped = 0
+  let cancelled = 0
   let errors = 0
   const results: BatchResult['results'] = []
 
@@ -582,6 +603,12 @@ async function runSurveilImport(targets: Array<{ path: string; name: string }>) 
 
   try {
     for (const target of targets) {
+      if (cancelRequested.value) {
+        results.push({ name: target.name, status: 'skipped', reason: 'cancelled' })
+        cancelled++
+        importDone.value++
+        continue
+      }
       try {
         const buf: Buffer = await window.electronAPI.readDatFile(target.path)
         const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
@@ -606,7 +633,7 @@ async function runSurveilImport(targets: Array<{ path: string; name: string }>) 
     } catch { /* ignore */ }
   }
 
-  batchResult.value = { imported, skipped, errors, results }
+  batchResult.value = { imported, skipped, cancelled, errors, results }
   state.value = 'batch_result'
 }
 
@@ -712,14 +739,26 @@ async function startImport() {
   }
 }
 
+async function handleCancel() {
+  if (cancelling.value) return
+  cancelling.value = true
+  cancelRequested.value = true
+  try {
+    await cancelImport()
+  } catch { /* ignore */ }
+}
+
 async function runImport(targets: Array<{ path: string; name: string }>) {
   state.value = 'importing'
   importDone.value = 0
   importTotal.value = targets.length
   importLog.value = []
+  cancelRequested.value = false
+  cancelling.value = false
 
   let imported = 0
   let skipped = 0
+  let cancelled = 0
   let errors = 0
   const results: BatchResult['results'] = []
 
@@ -732,6 +771,12 @@ async function runImport(targets: Array<{ path: string; name: string }>) {
 
   try {
     for (const target of targets) {
+      if (cancelRequested.value) {
+        results.push({ name: target.name, status: 'skipped', reason: 'cancelled' })
+        cancelled++
+        importDone.value++
+        continue
+      }
       try {
         const buf: Buffer = await window.electronAPI.readDatFile(target.path)
         const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
@@ -756,7 +801,7 @@ async function runImport(targets: Array<{ path: string; name: string }>) {
     } catch { /* ignore */ }
   }
 
-  batchResult.value = { imported, skipped, errors, results }
+  batchResult.value = { imported, skipped, cancelled, errors, results }
   state.value = 'batch_result'
 }
 
@@ -1060,6 +1105,31 @@ function formatDate(iso: string): string {
 .importing {
   padding: 48px 0;
   text-align: center;
+}
+
+.btn--cancel {
+  margin-top: 16px;
+  padding: 6px 20px;
+  background: none;
+  border: 1px solid #a07060;
+  color: #a07060;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.btn--cancel:hover:not(:disabled) {
+  background: #a07060;
+  color: #fff;
+}
+
+.btn--cancel:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.result__title--cancelled {
+  color: #c08030;
 }
 
 .import-log {

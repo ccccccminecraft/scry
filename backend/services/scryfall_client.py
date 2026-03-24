@@ -55,9 +55,14 @@ class ScryfallClient:
         result: dict[str, CardLegality] = {c.card_name: c for c in cached}
 
         # 未キャッシュ分を取得
+        import services.import_status as _status
+
         uncached = [name for name in card_names if name not in result]
         total_uncached = len(uncached)
         for i, name in enumerate(uncached):
+            if _status.is_cancel_requested():
+                logger.info("Scryfall fetch cancelled at %d/%d", i, total_uncached)
+                break
             card = self._fetch_one_by_name(name)
             if card is not None:
                 self._db.add(card)

@@ -18,6 +18,7 @@ _step: str = ""
 _scryfall_done: int = 0
 _scryfall_total: int = 0
 _log: List[str] = []
+_cancel_requested: bool = False
 
 
 def get_status() -> dict:
@@ -29,7 +30,19 @@ def get_status() -> dict:
             "scryfall_done": _scryfall_done,
             "scryfall_total": _scryfall_total,
             "log": list(_log),
+            "cancel_requested": _cancel_requested,
         }
+
+
+def request_cancel() -> None:
+    with _lock:
+        global _cancel_requested
+        _cancel_requested = True
+
+
+def is_cancel_requested() -> bool:
+    with _lock:
+        return _cancel_requested
 
 
 def start(filename: str) -> None:
@@ -70,12 +83,13 @@ def finish() -> None:
 
 
 def reset_log() -> None:
-    """インポートバッチ開始時にログをクリアする。"""
+    """インポートバッチ開始時にログとキャンセルフラグをクリアする。"""
     with _lock:
-        global _active, _filename, _step, _scryfall_done, _scryfall_total
+        global _active, _filename, _step, _scryfall_done, _scryfall_total, _cancel_requested
         _log.clear()
         _active = False
         _filename = ""
         _step = ""
         _scryfall_done = 0
         _scryfall_total = 0
+        _cancel_requested = False

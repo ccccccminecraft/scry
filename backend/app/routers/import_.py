@@ -20,6 +20,13 @@ def get_import_status():
     return import_status.get_status()
 
 
+@router.post("/import/cancel")
+def cancel_import():
+    """進行中のインポートにキャンセルフラグを立てる。"""
+    import_status.request_cancel()
+    return {"ok": True}
+
+
 @router.post("/import")
 async def import_one(file: UploadFile, db: Session = Depends(get_db)):
     """
