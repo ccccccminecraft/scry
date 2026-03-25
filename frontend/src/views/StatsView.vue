@@ -38,10 +38,10 @@
         </div>
       </div>
 
-      <!-- グラフ行 -->
+      <!-- グラフ行: 勝率推移 + 対戦相手デッキ別勝率 -->
       <div class="stats__charts">
         <!-- 勝率推移 -->
-        <div class="stats__chart-box stats__chart-box--wide">
+        <div class="stats__chart-box stats__chart-box--history">
           <div class="stats__chart-title-row">
             <div class="stats__chart-title">
               勝率推移（{{ historyMode === 0 ? '全' : '直近' }}{{ stats.win_rate_history.length }}試合）
@@ -51,26 +51,41 @@
               <option :value="0">全試合</option>
             </select>
           </div>
-          <WinRateHistoryChart
-            v-if="stats.win_rate_history.length > 0"
-            :data="stats.win_rate_history"
-          />
-          <div v-else class="stats__no-data">データなし</div>
+          <div class="stats__chart-grow">
+            <WinRateHistoryChart
+              v-if="stats.win_rate_history.length > 0"
+              :data="stats.win_rate_history"
+            />
+            <div v-else class="stats__no-data">データなし</div>
+          </div>
         </div>
 
-        <!-- 先手/後手 -->
+        <!-- 対戦相手デッキ別勝率 -->
         <div class="stats__chart-box">
-          <div class="stats__chart-title">先手 / 後手 勝率</div>
-          <FirstSecondChart
-            :firstRate="stats.first_play_win_rate"
-            :secondRate="stats.second_play_win_rate"
-          />
-        </div>
-
-        <!-- デッキ別 -->
-        <div v-if="stats.deck_stats.length > 0" class="stats__chart-box">
-          <div class="stats__chart-title">デッキ別勝率</div>
-          <DeckStatsChart :data="stats.deck_stats" />
+          <div class="stats__chart-title">対戦相手デッキ別勝率（Top 10）</div>
+          <div v-if="stats.opponent_deck_stats.length > 0" class="stats__table-wrap">
+            <table class="stats__table">
+              <thead>
+                <tr>
+                  <th>アーキタイプ名</th>
+                  <th class="stats__th-num stats__th-sort" @click="toggleOppSort('matches')">
+                    対戦数 <span class="stats__sort-icon">{{ oppSortIcon('matches') }}</span>
+                  </th>
+                  <th class="stats__th-num stats__th-sort" @click="toggleOppSort('win_rate')">
+                    勝率 <span class="stats__sort-icon">{{ oppSortIcon('win_rate') }}</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="d in sortedOpponentDeckStats" :key="d.deck_name">
+                  <td>{{ d.deck_name }}</td>
+                  <td class="stats__td-num">{{ d.matches }}</td>
+                  <td class="stats__td-num">{{ pct(d.win_rate) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-else class="stats__no-data">データなし</div>
         </div>
       </div>
 
@@ -136,8 +151,6 @@ import { fetchStats, fetchCardStats, type StatsResponse, type CardStat } from '.
 import { useFilterState } from '../composables/useFilterState'
 import { cardImageUrl } from '../api/decklist'
 import WinRateHistoryChart from '../components/charts/WinRateHistoryChart.vue'
-import FirstSecondChart from '../components/charts/FirstSecondChart.vue'
-import DeckStatsChart from '../components/charts/DeckStatsChart.vue'
 import FilterBar from '../components/FilterBar.vue'
 
 const { showError } = useToast()
@@ -179,6 +192,31 @@ function sortIcon(key: SortKey) {
   if (sortKey.value !== key) return '↕'
   return sortAsc.value ? '↑' : '↓'
 }
+
+type OppSortKey = 'matches' | 'win_rate'
+const oppSortKey = ref<OppSortKey>('matches')
+const oppSortAsc = ref(false)
+
+function toggleOppSort(key: OppSortKey) {
+  if (oppSortKey.value === key) {
+    oppSortAsc.value = !oppSortAsc.value
+  } else {
+    oppSortKey.value = key
+    oppSortAsc.value = false
+  }
+}
+
+function oppSortIcon(key: OppSortKey) {
+  if (oppSortKey.value !== key) return '↕'
+  return oppSortAsc.value ? '↑' : '↓'
+}
+
+const sortedOpponentDeckStats = computed(() => {
+  if (!stats.value) return []
+  const key = oppSortKey.value
+  const dir = oppSortAsc.value ? 1 : -1
+  return [...stats.value.opponent_deck_stats].sort((a, b) => (a[key] - b[key]) * dir)
+})
 
 const activeCardStats = computed(() =>
   cardStatsPerspective.value === 'self' ? cardStats.value : opponentCardStats.value
@@ -357,9 +395,15 @@ onActivated(activate)
   min-width: 220px;
 }
 
-.stats__chart-box--wide {
-  flex: 2;
-  min-width: 340px;
+.stats__chart-box--history {
+  display: flex;
+  flex-direction: column;
+  min-width: 280px;
+}
+
+.stats__chart-grow {
+  flex: 1;
+  min-height: 0;
 }
 
 .stats__chart-title-row {

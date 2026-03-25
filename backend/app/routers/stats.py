@@ -303,6 +303,9 @@ def get_stats(
     # ── デッキ別勝率 ──────────────────────────────────────────────────
     deck_stats = _calc_deck_stats(db, player, match_id_list, min_deck_matches)
 
+    # ── 対戦相手デッキ別勝率 ──────────────────────────────────────────
+    opponent_deck_stats = _calc_opponent_deck_stats(db, player, match_id_list)
+
     return {
         "total_matches": total_matches,
         "win_rate": win_rate,
@@ -312,7 +315,40 @@ def get_stats(
         "second_play_win_rate": second_win_rate,
         "win_rate_history": win_rate_history,
         "deck_stats": deck_stats,
+        "opponent_deck_stats": opponent_deck_stats,
     }
+
+
+def _calc_opponent_deck_stats(db: Session, player: str, match_id_list: list[str], limit: int = 10) -> list[dict]:
+    """対戦相手のアーキタイプ別の試合数と選択プレイヤーの勝率を返す。試合数上位 limit 件。"""
+    rows = (
+        db.query(MatchPlayer.deck_name, Match.match_winner)
+        .join(Match, Match.id == MatchPlayer.match_id)
+        .filter(
+            MatchPlayer.match_id.in_(match_id_list),
+            MatchPlayer.player_name != player,
+            MatchPlayer.deck_name.isnot(None),
+        )
+        .all()
+    )
+
+    deck_map: dict[str, dict] = {}
+    for deck_name, winner in rows:
+        if deck_name not in deck_map:
+            deck_map[deck_name] = {"matches": 0, "wins": 0}
+        deck_map[deck_name]["matches"] += 1
+        if winner == player:
+            deck_map[deck_name]["wins"] += 1
+
+    sorted_decks = sorted(deck_map.items(), key=lambda x: -x[1]["matches"])[:limit]
+    return [
+        {
+            "deck_name": name,
+            "matches": d["matches"],
+            "win_rate": d["wins"] / d["matches"],
+        }
+        for name, d in sorted_decks
+    ]
 
 
 def _calc_deck_stats(db: Session, player: str, match_id_list: list[str], min_deck_matches: int = 1) -> list[dict]:
@@ -464,4 +500,5 @@ def _empty_stats() -> dict:
         "second_play_win_rate": 0.0,
         "win_rate_history": [],
         "deck_stats": [],
+        "opponent_deck_stats": [],
     }

@@ -17,10 +17,8 @@ export interface StatsResponse {
   win_rate: number
   avg_turns: number
   mulligan_rate: number
-  first_play_win_rate: number
-  second_play_win_rate: number
   win_rate_history: WinRatePoint[]
-  deck_stats: DeckStat[]
+  opponent_deck_stats: DeckStat[]
 }
 
 export interface CardStat {
