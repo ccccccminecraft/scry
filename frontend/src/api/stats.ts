@@ -15,6 +15,8 @@ export interface DeckStat {
 export interface StatsResponse {
   total_matches: number
   win_rate: number
+  first_play_win_rate: number
+  second_play_win_rate: number
   avg_turns: number
   mulligan_rate: number
   win_rate_history: WinRatePoint[]

@@ -29,6 +29,14 @@
           <div class="stats__card-value">{{ pct(stats.win_rate) }}</div>
         </div>
         <div class="stats__card">
+          <div class="stats__card-label">先行勝率</div>
+          <div class="stats__card-value">{{ pct(stats.first_play_win_rate) }}</div>
+        </div>
+        <div class="stats__card">
+          <div class="stats__card-label">後攻勝率</div>
+          <div class="stats__card-value">{{ pct(stats.second_play_win_rate) }}</div>
+        </div>
+        <div class="stats__card">
           <div class="stats__card-label">平均ターン数</div>
           <div class="stats__card-value">{{ stats.avg_turns.toFixed(1) }}</div>
         </div>
@@ -42,15 +50,7 @@
       <div class="stats__charts">
         <!-- 勝率推移 -->
         <div class="stats__chart-box stats__chart-box--history">
-          <div class="stats__chart-title-row">
-            <div class="stats__chart-title">
-              勝率推移（{{ historyMode === 0 ? '全' : '直近' }}{{ stats.win_rate_history.length }}試合）
-            </div>
-            <select v-model="historyMode" class="stats__history-select" @change="loadStats">
-              <option :value="20">直近20試合</option>
-              <option :value="0">全試合</option>
-            </select>
-          </div>
+          <div class="stats__chart-title">勝率推移（{{ stats.win_rate_history.length }}試合）</div>
           <div class="stats__chart-grow">
             <WinRateHistoryChart
               v-if="stats.win_rate_history.length > 0"
@@ -169,7 +169,6 @@ const selectedDeckTile = computed(() => {
 })
 
 const stats = ref<StatsResponse | null>(null)
-const historyMode = ref<number>(20)
 const cardStats = ref<CardStat[]>([])
 const opponentCardStats = ref<CardStat[]>([])
 
@@ -248,7 +247,7 @@ async function loadStats() {
       format: format.value || undefined,
       date_from: dateFrom.value || undefined,
       date_to: dateTo.value || undefined,
-      history_size: historyMode.value,
+      history_size: 0,
       min_deck_matches: minDeckMatches.value,
     })
   } catch {
@@ -419,15 +418,6 @@ onActivated(activate)
   font-weight: bold;
 }
 
-.stats__history-select {
-  padding: 2px 6px;
-  border: 1px solid #c8b89a;
-  border-radius: 4px;
-  background: #fff;
-  color: #2c2416;
-  font-size: 11px;
-  font-family: inherit;
-}
 
 .stats__no-data {
   color: #b0a090;
