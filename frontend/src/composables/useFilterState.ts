@@ -5,13 +5,38 @@ import {
 import { fetchDecks, fetchVersions, type Deck, type DeckVersionSummary } from '../api/decklist'
 import { fetchSettings } from '../api/settings'
 
+// ── localStorage 永続化 ───────────────────────────────────────────────────────
+const STORAGE_KEY = 'scry_filter_state'
+
+function _loadFromStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return {}
+    return JSON.parse(raw) as Record<string, unknown>
+  } catch { return {} }
+}
+
+function _saveToStorage() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      format: format.value,
+      opponent: opponent.value,
+      deckId: deckId.value,
+      deck: deck.value,
+      opponentDeck: opponentDeck.value,
+    }))
+  } catch { /* ignore */ }
+}
+
 // ── module-level shared state (全ビューで共有) ────────────────────────────────
+const _saved = _loadFromStorage()
+
 const player = ref('')
-const opponent = ref('')
-const deckId = ref<number | null>(null)   // デッキリストモード用
-const deck = ref('')                       // アーキタイプモード用
-const opponentDeck = ref('')
-const format = ref('')
+const opponent = ref(typeof _saved.opponent === 'string' ? _saved.opponent : '')
+const deckId = ref<number | null>(typeof _saved.deckId === 'number' ? _saved.deckId : null)
+const deck = ref(typeof _saved.deck === 'string' ? _saved.deck : '')
+const opponentDeck = ref(typeof _saved.opponentDeck === 'string' ? _saved.opponentDeck : '')
+const format = ref(typeof _saved.format === 'string' ? _saved.format : '')
 const dateFrom = ref('')
 const dateTo = ref('')
 
@@ -24,6 +49,9 @@ const opponentDeckList = ref<string[]>([])
 const formatList = ref<string[]>([])
 
 const versionId = ref<number | null>(null)
+
+// フィルター変更時に localStorage へ保存
+watch([format, opponent, deckId, deck, opponentDeck], _saveToStorage)
 
 // デッキ選択変更時にバージョン一覧を再取得
 watch(deckId, async (newId) => {
@@ -157,6 +185,11 @@ export function useFilterState() {
           settings.default_date_filter_from ?? null,
         )
       }
+      // 保存済み deckId がリストに存在しなければクリア
+      if (deckId.value !== null && !deckList.value.find(d => d.id === deckId.value)) {
+        deckId.value = null
+      }
+
       if (!player.value && players.length > 0) {
         const preferred = settings.default_player
         playerModel.value = (preferred && players.includes(preferred)) ? preferred : players[0]
@@ -175,6 +208,7 @@ export function useFilterState() {
     format.value = ''
     dateFrom.value = ''
     dateTo.value = ''
+    try { localStorage.removeItem(STORAGE_KEY) } catch { /* ignore */ }
     _loadAllLists()
   }
 
