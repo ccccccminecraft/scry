@@ -2,72 +2,112 @@
   <div class="ai-export">
     <h1 class="ai-export__title">AI用エクスポート</h1>
 
-    <!-- フィルター -->
+    <!-- フィルター（タブ共有） -->
     <div class="ai-export__section">
       <div class="ai-export__section-label">フィルター</div>
       <FilterBar />
     </div>
 
-    <!-- 対象件数 -->
-    <div class="ai-export__section ai-export__count-section">
-      対象: <span class="ai-export__count-num">{{ matchCount !== null ? `${matchCount} 件` : '—' }}</span>
-    </div>
-
-    <!-- 出力内容 -->
-    <div class="ai-export__section">
-      <div class="ai-export__section-label">出力内容</div>
-      <div class="ai-export__checks">
-        <label class="ai-export__checkbox-label">
-          <input type="checkbox" v-model="inclSummary" class="ai-export__checkbox" />
-          サマリー
-        </label>
-        <label class="ai-export__checkbox-label">
-          <input type="checkbox" v-model="inclDeckStats" class="ai-export__checkbox" />
-          デッキ別勝率
-        </label>
-        <label class="ai-export__checkbox-label">
-          <input type="checkbox" v-model="inclCardStats" class="ai-export__checkbox" />
-          カード統計
-        </label>
-        <label class="ai-export__checkbox-label">
-          <input type="checkbox" v-model="inclDeckList" class="ai-export__checkbox" />
-          デッキリスト
-        </label>
-        <label class="ai-export__checkbox-label">
-          <input type="checkbox" v-model="inclMatches" class="ai-export__checkbox" />
-          対戦一覧
-        </label>
-        <label class="ai-export__checkbox-label" :class="{ 'ai-export__checkbox-label--disabled': !inclMatches }">
-          <input type="checkbox" v-model="inclActions" class="ai-export__checkbox" :disabled="!inclMatches" />
-          アクション詳細
-        </label>
-      </div>
-    </div>
-
-    <!-- 件数上限 -->
-    <div class="ai-export__section" :class="{ 'ai-export__section--disabled': !inclMatches }">
-      <div class="ai-export__section-label">件数上限（対戦一覧）</div>
-      <div class="ai-export__limit-row">
-        <label class="ai-export__checkbox-label">
-          <input type="checkbox" v-model="noLimit" class="ai-export__checkbox" :disabled="!inclMatches" />
-          制限なし（全件）
-        </label>
-      </div>
-      <div v-if="!noLimit" class="ai-export__limit-row">
-        <span class="ai-export__label">直近</span>
-        <input v-model.number="expLimit" type="number" min="1" max="1000" class="ai-export__limit-input" :disabled="!inclMatches" />
-        <span class="ai-export__label">件</span>
-      </div>
-    </div>
-
-    <!-- ダウンロードボタン -->
-    <div class="ai-export__footer">
+    <!-- タブ切り替え -->
+    <div class="ai-export__tabs">
       <button
-        class="ai-export__btn ai-export__btn--primary"
-        :disabled="!player || downloading || nothingSelected"
-        @click="runExport"
-      >{{ downloading ? '処理中…' : 'エクスポート' }}</button>
+        class="ai-export__tab"
+        :class="{ 'ai-export__tab--active': activeTab === 'matches' }"
+        @click="activeTab = 'matches'"
+      >対戦ログ</button>
+      <button
+        class="ai-export__tab"
+        :class="{ 'ai-export__tab--active': activeTab === 'cards' }"
+        @click="activeTab = 'cards'"
+      >カード辞書</button>
     </div>
+
+    <!-- 対戦ログタブ -->
+    <template v-if="activeTab === 'matches'">
+      <!-- 対象件数 -->
+      <div class="ai-export__section ai-export__count-section">
+        対象: <span class="ai-export__count-num">{{ matchCount !== null ? `${matchCount} 件` : '—' }}</span>
+      </div>
+
+      <!-- 出力内容 -->
+      <div class="ai-export__section">
+        <div class="ai-export__section-label">出力内容</div>
+        <div class="ai-export__checks">
+          <label class="ai-export__checkbox-label">
+            <input type="checkbox" v-model="inclSummary" class="ai-export__checkbox" />
+            サマリー
+          </label>
+          <label class="ai-export__checkbox-label">
+            <input type="checkbox" v-model="inclDeckStats" class="ai-export__checkbox" />
+            デッキ別勝率
+          </label>
+          <label class="ai-export__checkbox-label">
+            <input type="checkbox" v-model="inclCardStats" class="ai-export__checkbox" />
+            カード統計
+          </label>
+          <label class="ai-export__checkbox-label">
+            <input type="checkbox" v-model="inclDeckList" class="ai-export__checkbox" />
+            デッキリスト
+          </label>
+          <label class="ai-export__checkbox-label">
+            <input type="checkbox" v-model="inclMatches" class="ai-export__checkbox" />
+            対戦一覧
+          </label>
+          <label class="ai-export__checkbox-label" :class="{ 'ai-export__checkbox-label--disabled': !inclMatches }">
+            <input type="checkbox" v-model="inclActions" class="ai-export__checkbox" :disabled="!inclMatches" />
+            アクション詳細
+          </label>
+        </div>
+      </div>
+
+      <!-- 件数上限 -->
+      <div class="ai-export__section" :class="{ 'ai-export__section--disabled': !inclMatches }">
+        <div class="ai-export__section-label">件数上限（対戦一覧）</div>
+        <div class="ai-export__limit-row">
+          <label class="ai-export__checkbox-label">
+            <input type="checkbox" v-model="noLimit" class="ai-export__checkbox" :disabled="!inclMatches" />
+            制限なし（全件）
+          </label>
+        </div>
+        <div v-if="!noLimit" class="ai-export__limit-row">
+          <span class="ai-export__label">直近</span>
+          <input v-model.number="expLimit" type="number" min="1" max="1000" class="ai-export__limit-input" :disabled="!inclMatches" />
+          <span class="ai-export__label">件</span>
+        </div>
+      </div>
+
+      <!-- ダウンロードボタン -->
+      <div class="ai-export__footer">
+        <button
+          class="ai-export__btn ai-export__btn--primary"
+          :disabled="!player || downloading || nothingSelected"
+          @click="runExport"
+        >{{ downloading ? '処理中…' : 'エクスポート' }}</button>
+      </div>
+    </template>
+
+    <!-- カード辞書タブ -->
+    <template v-else>
+      <!-- 対象カード件数 -->
+      <div class="ai-export__section ai-export__count-section">
+        対象:
+        <span class="ai-export__count-num">
+          {{ cardCount !== null ? `${cardCount.total} 種類` : '—' }}
+        </span>
+        <span v-if="cardCount && cardCount.missing > 0" class="ai-export__count-missing">
+          （うちデータ未取得: {{ cardCount.missing }} 種類）
+        </span>
+      </div>
+
+      <!-- ダウンロードボタン -->
+      <div class="ai-export__footer">
+        <button
+          class="ai-export__btn ai-export__btn--primary"
+          :disabled="!player || cardDownloading"
+          @click="runCardExport"
+        >{{ cardDownloading ? '処理中…' : 'カード辞書をエクスポート' }}</button>
+      </div>
+    </template>
   </div>
 
   <ConfirmDialog
@@ -81,7 +121,11 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import { fetchExportCount, fetchExportMarkdown } from '../api/matches'
+import {
+  fetchExportCount, fetchExportMarkdown,
+  fetchCardDictionaryCount, fetchCardDictionary,
+  type CardDictionaryCount,
+} from '../api/matches'
 import { useToast } from '../composables/useToast'
 import { useFilterState } from '../composables/useFilterState'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
@@ -94,6 +138,10 @@ const {
   init,
 } = useFilterState()
 
+// ── タブ ──────────────────────────────────────────────────────────────────
+const activeTab = ref<'matches' | 'cards'>('matches')
+
+// ── 対戦ログタブ: 設定の永続化 ───────────────────────────────────────────
 const EXPORT_SETTINGS_KEY = 'scry_export_settings'
 
 function _loadExportSettings() {
@@ -139,21 +187,14 @@ const nothingSelected = computed(() =>
   !inclDeckList.value && !inclMatches.value
 )
 
-// 対戦一覧がオフになったらアクション詳細もオフ
 watch(inclMatches, (v) => { if (!v) inclActions.value = false })
-
-// 出力内容の変更を保存
 watch([inclSummary, inclDeckStats, inclCardStats, inclDeckList, inclMatches, inclActions], _saveExportSettings)
 
-async function loadCount() {
-  if (!player.value) { matchCount.value = null; return }
-  try {
-    matchCount.value = await fetchExportCount(currentFilters())
-  } catch { /* ignore */ }
-}
+// ── カード辞書タブ ────────────────────────────────────────────────────────
+const cardCount = ref<CardDictionaryCount | null>(null)
+const cardDownloading = ref(false)
 
-watch([player, opponent, deckIds, decks, versionId, opponentDecks, format, dateFrom, dateTo], loadCount, { deep: true })
-
+// ── 共通: フィルター ──────────────────────────────────────────────────────
 function currentFilters() {
   const hasSingleDeck = deckIds.value.length === 1 && decks.value.length === 0
   return {
@@ -173,6 +214,24 @@ function currentFilters() {
   }
 }
 
+async function loadCount() {
+  if (!player.value) { matchCount.value = null; return }
+  try {
+    matchCount.value = await fetchExportCount(currentFilters())
+  } catch { /* ignore */ }
+}
+
+async function loadCardCount() {
+  if (!player.value) { cardCount.value = null; return }
+  try {
+    cardCount.value = await fetchCardDictionaryCount(currentFilters())
+  } catch { /* ignore */ }
+}
+
+const filterWatchSources = [player, opponent, deckIds, decks, versionId, opponentDecks, format, dateFrom, dateTo]
+watch(filterWatchSources, () => { loadCount(); loadCardCount() }, { deep: true })
+
+// ── 対戦ログエクスポート ──────────────────────────────────────────────────
 async function runExport() {
   if (!player.value) return
   downloading.value = true
@@ -222,20 +281,7 @@ async function doDownload() {
       limit: expLimit.value,
       no_limit: noLimit.value || undefined,
     })
-    const blob = new Blob([markdown], { type: 'text/plain; charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    const now = new Date()
-    const dateStr = now.getFullYear().toString()
-      + String(now.getMonth() + 1).padStart(2, '0')
-      + String(now.getDate()).padStart(2, '0')
-      + String(now.getHours()).padStart(2, '0')
-      + String(now.getMinutes()).padStart(2, '0')
-      + String(now.getSeconds()).padStart(2, '0')
-    a.href = url
-    a.download = `scry_export_${player.value}_${dateStr}.md`
-    a.click()
-    URL.revokeObjectURL(url)
+    _triggerDownload(markdown, `scry_export_${player.value}_${_dateStr()}.md`)
   } catch (e) {
     showError(e instanceof Error ? e.message : 'ダウンロードに失敗しました')
   } finally {
@@ -243,9 +289,47 @@ async function doDownload() {
   }
 }
 
+// ── カード辞書エクスポート ────────────────────────────────────────────────
+async function runCardExport() {
+  if (!player.value) return
+  cardDownloading.value = true
+  try {
+    const text = await fetchCardDictionary(currentFilters())
+    _triggerDownload(text, `scry_cards_${player.value}_${_dateStr()}.md`)
+  } catch (e) {
+    showError(e instanceof Error ? e.message : 'カード辞書のダウンロードに失敗しました')
+  } finally {
+    cardDownloading.value = false
+  }
+}
+
+// ── ユーティリティ ────────────────────────────────────────────────────────
+function _dateStr() {
+  const now = new Date()
+  return now.getFullYear().toString()
+    + String(now.getMonth() + 1).padStart(2, '0')
+    + String(now.getDate()).padStart(2, '0')
+    + String(now.getHours()).padStart(2, '0')
+    + String(now.getMinutes()).padStart(2, '0')
+    + String(now.getSeconds()).padStart(2, '0')
+}
+
+function _triggerDownload(content: string, filename: string) {
+  const blob = new Blob([content], { type: 'text/plain; charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 onMounted(async () => {
   const playerSet = await init()
-  if (!playerSet) loadCount()
+  if (!playerSet) {
+    loadCount()
+    loadCardCount()
+  }
 })
 </script>
 
@@ -261,6 +345,31 @@ onMounted(async () => {
   font-size: 1.2rem;
   font-weight: bold;
   color: #2c2416;
+}
+
+.ai-export__tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid #c8b89a;
+}
+
+.ai-export__tab {
+  padding: 7px 20px;
+  border: 1px solid #c8b89a;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  background: #f0ece0;
+  font-size: 13px;
+  cursor: pointer;
+  color: #7a6a55;
+  margin-bottom: -2px;
+}
+
+.ai-export__tab--active {
+  background: #fff;
+  color: #2c2416;
+  font-weight: bold;
+  border-bottom: 2px solid #fff;
 }
 
 .ai-export__section {
@@ -286,6 +395,12 @@ onMounted(async () => {
 .ai-export__count-num {
   font-weight: bold;
   color: #2c2416;
+}
+
+.ai-export__count-missing {
+  margin-left: 6px;
+  font-size: 12px;
+  color: #a07040;
 }
 
 .ai-export__section-label {

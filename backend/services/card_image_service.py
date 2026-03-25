@@ -1,6 +1,8 @@
 import asyncio
+import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
@@ -38,6 +40,51 @@ async def get_card_image(scryfall_id: str, size: str = "small") -> Path:
     return cache_path
 
 
+def _extract_card_cache_fields(data: dict) -> dict:
+    """Scryfall レスポンスから card_cache 保存用フィールドを抽出する。"""
+    is_dfc = "card_faces" in data
+
+    # mana_cost: 空文字列は NULL に正規化
+    mana_cost = data.get("mana_cost") or None
+
+    # card_faces の抽出（DFC / Room / Battle）
+    card_faces_json = None
+    if is_dfc:
+        faces = []
+        for face in data.get("card_faces", []):
+            face_data: dict = {
+                "name": face.get("name", ""),
+                "mana_cost": face.get("mana_cost") or None,
+                "type_line": face.get("type_line", ""),
+                "oracle_text": face.get("oracle_text"),
+            }
+            if face.get("power") is not None:
+                face_data["power"] = face["power"]
+            if face.get("toughness") is not None:
+                face_data["toughness"] = face["toughness"]
+            if face.get("defense") is not None:
+                face_data["defense"] = face["defense"]
+            faces.append(face_data)
+        card_faces_json = json.dumps(faces, ensure_ascii=False)
+
+    loyalty = data.get("loyalty")
+
+    return {
+        "name": data.get("name", ""),
+        "mana_cost": mana_cost,
+        "cmc": float(data.get("cmc", 0.0)),
+        "type_line": data.get("type_line", ""),
+        "oracle_text": data.get("oracle_text") if not is_dfc else None,
+        "power": data.get("power"),
+        "toughness": data.get("toughness"),
+        "loyalty": str(loyalty) if loyalty is not None else None,
+        "colors": json.dumps(data.get("colors", []), ensure_ascii=False),
+        "keywords": json.dumps(data.get("keywords", []), ensure_ascii=False),
+        "produced_mana": json.dumps(data["produced_mana"], ensure_ascii=False) if data.get("produced_mana") else None,
+        "card_faces": card_faces_json,
+    }
+
+
 async def _resolve_by_name(card_name: str) -> dict | None:
     async with httpx.AsyncClient(timeout=10.0) as client:
         response = await client.get(
@@ -53,6 +100,7 @@ async def _resolve_by_name(card_name: str) -> dict | None:
         return {
             "scryfall_id": data.get("id"),
             "image_url": image_uris.get("normal"),
+            "_raw": data,
         }
 
 
@@ -68,12 +116,14 @@ async def _resolve_by_mtgo_id(mtgo_id: int) -> dict | None:
         return {
             "scryfall_id": data.get("id"),
             "image_url": image_uris.get("normal"),
+            "_raw": data,
         }
 
 
 async def fill_scryfall_ids(card_ids: list[int]) -> None:
-    """バックグラウンドタスク: scryfall_id が未取得のカードを補完する。"""
+    """バックグラウンドタスク: scryfall_id が未取得のカードを補完し、card_cache も更新する。"""
     from models.decklist import Card
+    from models.cache import CardCache
     from database import SessionLocal
 
     db = SessionLocal()
@@ -91,24 +141,35 @@ async def fill_scryfall_ids(card_ids: list[int]) -> None:
                     result = await _resolve_by_name(card.name)
 
                 if result and result.get("scryfall_id"):
+                    scryfall_id = result["scryfall_id"]
                     existing = (
                         db.query(Card)
-                        .filter(Card.scryfall_id == result["scryfall_id"])
+                        .filter(Card.scryfall_id == scryfall_id)
                         .first()
                     )
                     if existing is None:
-                        card.scryfall_id = result["scryfall_id"]
+                        card.scryfall_id = scryfall_id
                         card.image_url = result["image_url"]
                         db.commit()
                     elif existing.id != card.id:
-                        # 同一 scryfall_id を持つ Card が既に存在する（同カードの別印刷版など）
-                        # DeckVersionCard の参照を既存カードに付け替えてからこのカード行を削除
                         from models.decklist import DeckVersionCard
                         db.query(DeckVersionCard).filter(
                             DeckVersionCard.card_id == card.id
                         ).update({"card_id": existing.id})
                         db.delete(card)
                         db.commit()
+
+                    # card_cache への保存（未登録の場合のみ）
+                    raw = result.get("_raw")
+                    if raw and not db.get(CardCache, scryfall_id):
+                        fields = _extract_card_cache_fields(raw)
+                        db.add(CardCache(
+                            scryfall_id=scryfall_id,
+                            fetched_at=datetime.now(timezone.utc),
+                            **fields,
+                        ))
+                        db.commit()
+
             except Exception:
                 pass
             await asyncio.sleep(0.05)

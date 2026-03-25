@@ -473,6 +473,224 @@ def _build_export_markdown(
     return "\n".join(lines)
 
 
+@router.get("/matches/export/card-dictionary/count")
+def card_dictionary_count(
+    player: str = Query(...),
+    opponent: str | None = Query(default=None),
+    deck_ids: list[int] = Query(default=[]),
+    decks: list[str] = Query(default=[]),
+    version_id: int | None = Query(default=None),
+    opponent_decks: list[str] = Query(default=[]),
+    format: str | None = Query(default=None),
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """カード辞書エクスポート対象のユニークカード数を返す。"""
+    from app.routers.stats import _build_match_id_list
+    from models.cache import CardCache
+
+    match_ids = _build_match_id_list(db, player, opponent, deck_ids, opponent_decks, format, date_from, date_to, decks, version_id)
+    if not match_ids:
+        return {"total": 0, "cached": 0, "missing": 0}
+
+    rows = (
+        db.query(Action.card_name)
+        .join(Game, Game.id == Action.game_id)
+        .filter(Game.match_id.in_(match_ids), Action.card_name.isnot(None))
+        .distinct()
+        .all()
+    )
+    card_names = [r[0] for r in rows]
+    total = len(card_names)
+    cached_names = {
+        r[0] for r in db.query(CardCache.name).filter(CardCache.name.in_(card_names)).all()
+    }
+    cached = len(cached_names)
+    return {"total": total, "cached": cached, "missing": total - cached}
+
+
+@router.get("/matches/export/card-dictionary")
+def export_card_dictionary(
+    player: str = Query(...),
+    opponent: str | None = Query(default=None),
+    deck_ids: list[int] = Query(default=[]),
+    decks: list[str] = Query(default=[]),
+    version_id: int | None = Query(default=None),
+    opponent_decks: list[str] = Query(default=[]),
+    format: str | None = Query(default=None),
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """カード辞書を Markdown 形式（text/plain）でエクスポートする。"""
+    from app.routers.stats import _build_match_id_list
+
+    match_ids = _build_match_id_list(db, player, opponent, deck_ids, opponent_decks, format, date_from, date_to, decks, version_id)
+
+    filter_parts = []
+    if opponent:
+        filter_parts.append(f"対戦相手={opponent}")
+    deck_id_names = [db.get(Deck, did).name for did in deck_ids if db.get(Deck, did)]
+    deck_label = "、".join(deck_id_names + list(decks))
+    if deck_label:
+        filter_parts.append(f"使用デッキ={deck_label}")
+    if opponent_decks:
+        filter_parts.append(f"相手デッキ={'、'.join(opponent_decks)}")
+    if format:
+        filter_parts.append(f"フォーマット={format}")
+    if date_from:
+        filter_parts.append(f"開始日={date_from}")
+    if date_to:
+        filter_parts.append(f"終了日={date_to}")
+    filter_str = "、".join(filter_parts) if filter_parts else "なし（全データ）"
+
+    markdown = _build_card_dictionary_markdown(player, db, match_ids, filter_str)
+
+    from datetime import datetime as dt
+    date_str = dt.now().strftime("%Y%m%d%H%M%S")
+    filename = f"scry_cards_{player}_{date_str}.md"
+    return Response(
+        content=markdown,
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _build_card_dictionary_markdown(
+    player: str,
+    db: Session,
+    match_ids: list[str],
+    filter_str: str,
+) -> str:
+    import json
+    from datetime import datetime as dt
+    from models.cache import CardCache
+
+    now_str = dt.now().strftime("%Y-%m-%d %H:%M")
+
+    if not match_ids:
+        return "\n".join([
+            f"# カード辞書 — {player}",
+            "",
+            f"エクスポート日時: {now_str}",
+            f"フィルター: {filter_str}",
+            "",
+            "*対象データなし*",
+        ])
+
+    rows = (
+        db.query(Action.card_name)
+        .join(Game, Game.id == Action.game_id)
+        .filter(Game.match_id.in_(match_ids), Action.card_name.isnot(None))
+        .distinct()
+        .order_by(Action.card_name)
+        .all()
+    )
+    card_names = [r[0] for r in rows]
+
+    cache_map: dict[str, CardCache] = {}
+    if card_names:
+        cached = db.query(CardCache).filter(CardCache.name.in_(card_names)).all()
+        cache_map = {c.name: c for c in cached}
+
+    total = len(card_names)
+    missing = sum(1 for n in card_names if n not in cache_map)
+
+    lines = [
+        f"# カード辞書 — {player}",
+        "",
+        f"エクスポート日時: {now_str}",
+        f"フィルター: {filter_str}",
+        f"対象カード: {total} 種類（うちデータ未取得: {missing} 種類）",
+        "",
+        "---",
+        "",
+    ]
+
+    for name in card_names:
+        if name in cache_map:
+            lines.extend(_format_card_for_export(cache_map[name]))
+        else:
+            lines.extend([f"## {name}", "（データ未取得）", ""])
+        lines.extend(["---", ""])
+
+    return "\n".join(lines)
+
+
+def _format_card_for_export(card) -> list[str]:
+    """CardCache オブジェクトを Markdown 行リストに変換する。"""
+    import json
+
+    lines = [f"## {card.name}"]
+    is_dfc = card.card_faces is not None
+
+    def _cmc_str(cmc: float) -> str:
+        return str(int(cmc)) if cmc == int(cmc) else str(cmc)
+
+    if is_dfc:
+        faces = json.loads(card.card_faces)
+        lines.append(f"タイプ: {card.type_line}")
+        kw = json.loads(card.keywords) if card.keywords else []
+        if kw:
+            lines.append(f"キーワード: {', '.join(kw)}")
+
+        is_battle = "Battle" in card.type_line
+        is_room = "Room" in card.type_line
+        if is_battle:
+            lines.append("（バトル / 両面カード）")
+        elif is_room:
+            lines.append("（部屋 / 両面カード）")
+        else:
+            lines.append("（両面カード）")
+        lines.append("")
+
+        for i, face in enumerate(faces):
+            if is_room:
+                label = f"部屋{i + 1}"
+            else:
+                label = "表面" if i == 0 else "裏面"
+            lines.append(f"**{label} — {face['name']}**")
+
+            # マナコスト: face の値を優先、Battle 表面は top-level を使用
+            face_mc = face.get("mana_cost") or (card.mana_cost if i == 0 else None)
+            if face_mc:
+                cmc_note = f"（CMC: {_cmc_str(card.cmc)}）" if i == 0 else ""
+                lines.append(f"  マナコスト: {face_mc}{cmc_note}")
+            if face.get("power") and face.get("toughness"):
+                lines.append(f"  P/T: {face['power']}/{face['toughness']}")
+            if face.get("defense"):
+                lines.append(f"  防衛: {face['defense']}")
+            oracle = face.get("oracle_text")
+            if oracle:
+                lines.append("  テキスト:")
+                for ot_line in oracle.split("\n"):
+                    lines.append(f"  {ot_line}")
+            lines.append("")
+    else:
+        if card.mana_cost:
+            lines.append(f"マナコスト: {card.mana_cost}（CMC: {_cmc_str(card.cmc)}）")
+        lines.append(f"タイプ: {card.type_line}")
+        if card.power and card.toughness:
+            lines.append(f"P/T: {card.power}/{card.toughness}")
+        if card.loyalty:
+            lines.append(f"初期忠誠度: {card.loyalty}")
+        kw = json.loads(card.keywords) if card.keywords else []
+        if kw:
+            lines.append(f"キーワード: {', '.join(kw)}")
+        if card.produced_mana:
+            pm = json.loads(card.produced_mana)
+            if pm:
+                lines.append(f"生成マナ: {''.join(f'{{{m}}}' for m in pm)}")
+        if card.oracle_text:
+            lines.append("テキスト:")
+            for ot_line in card.oracle_text.split("\n"):
+                lines.append(ot_line)
+        lines.append("")
+
+    return lines
+
+
 def _bulk_assign_query(db: Session, player: str, format_: str | None, deck_name: str | None, date_from: str | None, date_to: str | None):
     """一括適用フィルターに合致する MatchPlayer クエリを返す。"""
     q = (

@@ -106,6 +106,25 @@ export async function fetchExportCount(filters: MatchFilters): Promise<number> {
   return res.data.count
 }
 
+export interface CardDictionaryCount {
+  total: number
+  cached: number
+  missing: number
+}
+
+export async function fetchCardDictionaryCount(filters: MatchFilters): Promise<CardDictionaryCount> {
+  const res = await client.get<CardDictionaryCount>('/api/matches/export/card-dictionary/count', { params: filters })
+  return res.data
+}
+
+export async function fetchCardDictionary(filters: MatchFilters): Promise<string> {
+  const res = await client.get<string>('/api/matches/export/card-dictionary', {
+    params: filters,
+    responseType: 'text',
+  })
+  return res.data
+}
+
 export async function fetchExportMarkdown(params: ExportParams): Promise<string> {
   const res = await client.get<string>('/api/matches/export', {
     params,
