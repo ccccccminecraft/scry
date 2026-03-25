@@ -62,6 +62,19 @@ watch(deckId, async (newId) => {
   } catch { versionList.value = [] }
 })
 
+// フォーマットの表示順
+const FORMAT_ORDER = ['standard', 'pioneer', 'modern', 'pauper', 'legacy', 'vintage', 'unknown']
+
+function _sortFormats(formats: string[]): string[] {
+  return [...formats].sort((a, b) => {
+    const ai = FORMAT_ORDER.indexOf(a)
+    const bi = FORMAT_ORDER.indexOf(b)
+    const aRank = ai === -1 ? FORMAT_ORDER.length : ai
+    const bRank = bi === -1 ? FORMAT_ORDER.length : bi
+    return aRank - bRank
+  })
+}
+
 // settings から取得した最低試合数
 const minPlayerMatches = ref(1)
 const minDeckMatches = ref(1)
@@ -178,7 +191,7 @@ export function useFilterState() {
       minDeckMatches.value = settings.min_deck_matches ?? 1
       const players = await fetchPlayers(minPlayerMatches.value)
       playerList.value = players
-      formatList.value = formats
+      formatList.value = _sortFormats(formats)
       if (!dateFrom.value) {
         dateFrom.value = calcDefaultDateFrom(
           settings.default_date_filter ?? 'none',
