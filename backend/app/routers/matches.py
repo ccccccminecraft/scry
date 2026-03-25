@@ -208,15 +208,21 @@ def export_matches(
     deck_id_names = [db.get(Deck, did).name for did in deck_ids if db.get(Deck, did)]
     deck_label = "、".join(deck_id_names + list(decks)) or None
     effective_limit = None if no_limit else limit
-    effective_version_id = version_id
-    if not effective_version_id and len(deck_ids) == 1:
-        latest = db.query(DeckVersion).filter(DeckVersion.deck_id == deck_ids[0]).order_by(DeckVersion.version_number.desc()).first()
-        if latest:
-            effective_version_id = latest.id
+    # デッキリスト出力用バージョンIDリスト
+    if version_id:
+        output_version_ids = [version_id]
+    elif deck_ids:
+        output_version_ids = []
+        for did in deck_ids:
+            latest = db.query(DeckVersion).filter(DeckVersion.deck_id == did).order_by(DeckVersion.version_number.desc()).first()
+            if latest:
+                output_version_ids.append(latest.id)
+    else:
+        output_version_ids = []
     opponent_deck_label = "、".join(opponent_decks) or None
     markdown = _build_export_markdown(player, db, match_ids, detail_level, effective_limit,
                                       opponent, deck_label, opponent_deck_label, format, date_from, date_to,
-                                      version_id=effective_version_id)
+                                      version_ids=output_version_ids)
 
     from datetime import datetime as dt
     date_str = dt.now().strftime("%Y%m%d%H%M%S")
@@ -240,7 +246,7 @@ def _build_export_markdown(
     format_: str | None,
     date_from: str | None,
     date_to: str | None,
-    version_id: int | None = None,
+    version_ids: list[int] | None = None,
 ) -> str:
     from datetime import datetime as dt
     from app.routers.stats import _calc_deck_stats
@@ -357,28 +363,30 @@ def _build_export_markdown(
         lines.append("")
 
     # ── デッキリスト ──────────────────────────────────────────────────────
-    if version_id:
-        ver = db.get(DeckVersion, version_id)
-        if ver:
-            main_cards = [c for c in ver.cards if not c.is_sideboard]
-            side_cards = [c for c in ver.cards if c.is_sideboard]
-            if main_cards or side_cards:
-                label = f"{ver.deck.name} v{ver.version_number}"
-                if ver.memo:
-                    label += f" {ver.memo}"
-                lines += [f"## デッキリスト: {label}", ""]
-                if main_cards:
-                    lines += [f"### メインデッキ ({sum(c.quantity for c in main_cards)})", "",
-                               "| 枚数 | カード名 |", "|------|---------|"]
-                    for c in sorted(main_cards, key=lambda x: x.card.name):
-                        lines.append(f"| {c.quantity} | {c.card.name} |")
-                    lines.append("")
-                if side_cards:
-                    lines += [f"### サイドボード ({sum(c.quantity for c in side_cards)})", "",
-                               "| 枚数 | カード名 |", "|------|---------|"]
-                    for c in sorted(side_cards, key=lambda x: x.card.name):
-                        lines.append(f"| {c.quantity} | {c.card.name} |")
-                    lines.append("")
+    for vid in (version_ids or []):
+        ver = db.get(DeckVersion, vid)
+        if not ver:
+            continue
+        main_cards = [c for c in ver.cards if not c.is_sideboard]
+        side_cards = [c for c in ver.cards if c.is_sideboard]
+        if not main_cards and not side_cards:
+            continue
+        label = f"{ver.deck.name} v{ver.version_number}"
+        if ver.memo:
+            label += f" {ver.memo}"
+        lines += [f"## デッキリスト: {label}", ""]
+        if main_cards:
+            lines += [f"### メインデッキ ({sum(c.quantity for c in main_cards)})", "",
+                       "| 枚数 | カード名 |", "|------|---------|"]
+            for c in sorted(main_cards, key=lambda x: x.card.name):
+                lines.append(f"| {c.quantity} | {c.card.name} |")
+            lines.append("")
+        if side_cards:
+            lines += [f"### サイドボード ({sum(c.quantity for c in side_cards)})", "",
+                       "| 枚数 | カード名 |", "|------|---------|"]
+            for c in sorted(side_cards, key=lambda x: x.card.name):
+                lines.append(f"| {c.quantity} | {c.card.name} |")
+            lines.append("")
 
     if detail_level == "summary":
         return "\n".join(lines)
