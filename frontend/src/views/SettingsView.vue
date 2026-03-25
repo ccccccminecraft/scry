@@ -26,6 +26,27 @@
     </div>
 
     <div class="settings__section">
+      <div class="settings__section-title">デフォルト期間</div>
+      <div class="settings__row">
+        <select v-model="defaultDateFilterInput" class="settings__select">
+          <option value="none">全期間</option>
+          <option value="this_month">今月</option>
+          <option value="last_30_days">直近30日</option>
+          <option value="custom">カスタム開始日</option>
+        </select>
+        <template v-if="defaultDateFilterInput !== 'custom'">
+          <button class="settings__btn settings__btn--primary" @click="saveDefaultDateFilter">保存</button>
+        </template>
+      </div>
+      <div v-if="defaultDateFilterInput === 'custom'" class="settings__row">
+        <label class="settings__inline-label">開始日</label>
+        <input v-model="defaultDateFilterFromInput" type="date" class="settings__date-input" />
+        <button class="settings__btn settings__btn--primary" @click="saveDefaultDateFilter">保存</button>
+      </div>
+      <p class="settings__note">統計・対戦履歴画面を開いたときに自動的にこの期間で絞り込みます。</p>
+    </div>
+
+    <div class="settings__section">
       <div class="settings__section-title">絞り込みの最低試合数</div>
       <div class="settings__row">
         <label class="settings__inline-label">プレイヤー</label>
@@ -266,6 +287,8 @@ const autoImportEnabled = ref(false)
 const autoImportIntervalInput = ref(30)
 const autoImportStatus = ref<AutoImportStatus | null>(null)
 const scryfallEnabled = ref(false)
+const defaultDateFilterInput = ref('none')
+const defaultDateFilterFromInput = ref('')
 const toggleConfirmVisible = ref(false)
 const toggleConfirmMessage = ref('')
 const pendingToggle = ref<(() => Promise<void>) | null>(null)
@@ -289,6 +312,8 @@ onMounted(async () => {
     autoImportIntervalInput.value = s.auto_import_interval_sec ?? 30
     autoImportStatus.value = aiStatus
     scryfallEnabled.value = s.scryfall_enabled ?? false
+    defaultDateFilterInput.value = s.default_date_filter ?? 'none'
+    defaultDateFilterFromInput.value = s.default_date_filter_from ?? ''
     if (mtgaStatus?.folder) {
       mtgaFolderInput.value = mtgaStatus.folder
       mtgaFolderSaved.value = true
@@ -317,6 +342,18 @@ async function saveMinMatches() {
       min_deck_matches: Math.max(0, minDeckMatchesInput.value),
     })
     showSuccess('最低試合数を保存しました')
+  } catch {
+    showError('保存に失敗しました')
+  }
+}
+
+async function saveDefaultDateFilter() {
+  try {
+    await updateSettings({
+      default_date_filter: defaultDateFilterInput.value,
+      default_date_filter_from: defaultDateFilterInput.value === 'custom' ? (defaultDateFilterFromInput.value || null) : null,
+    })
+    showSuccess('デフォルト期間を保存しました')
   } catch {
     showError('保存に失敗しました')
   }

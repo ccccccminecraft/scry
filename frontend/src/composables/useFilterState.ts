@@ -47,6 +47,22 @@ watch(deckId, async (newId) => {
 const minPlayerMatches = ref(1)
 const minDeckMatches = ref(1)
 
+function calcDefaultDateFrom(filter: string, customFrom: string | null): string {
+  const today = new Date()
+  if (filter === 'this_month') {
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
+  }
+  if (filter === 'last_30_days') {
+    const d = new Date(today)
+    d.setDate(d.getDate() - 30)
+    return d.toISOString().slice(0, 10)
+  }
+  if (filter === 'custom' && customFrom) {
+    return customFrom
+  }
+  return ''
+}
+
 // ── private loaders ───────────────────────────────────────────────────────────
 
 async function _loadAllLists() {
@@ -144,6 +160,12 @@ export function useFilterState() {
       const players = await fetchPlayers(minPlayerMatches.value)
       playerList.value = players
       formatList.value = formats
+      if (!dateFrom.value) {
+        dateFrom.value = calcDefaultDateFrom(
+          settings.default_date_filter ?? 'none',
+          settings.default_date_filter_from ?? null,
+        )
+      }
       if (!player.value && players.length > 0) {
         const preferred = settings.default_player
         playerModel.value = (preferred && players.includes(preferred)) ? preferred : players[0]

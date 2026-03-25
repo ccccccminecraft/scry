@@ -11,6 +11,8 @@ export interface SettingsResponse {
   auto_import_interval_sec: number
   onboarding_completed: boolean
   scryfall_enabled: boolean
+  default_date_filter: string
+  default_date_filter_from: string | null
 }
 
 export interface AutoImportStatus {
@@ -44,6 +46,8 @@ export async function updateSettings(body: {
   auto_import_interval_sec?: number
   onboarding_completed?: boolean
   scryfall_enabled?: boolean
+  default_date_filter?: string
+  default_date_filter_from?: string | null
 }): Promise<void> {
   await client.put('/api/settings', body)
 }
