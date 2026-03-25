@@ -120,13 +120,25 @@ def list_matches(
         q = q.filter(Match.played_at < dt_to)
 
     total = q.count()
+
+    from sqlalchemy.orm import selectinload
     rows = (
         q
         .order_by(Match.played_at.desc())
         .offset(offset)
         .limit(limit)
+        .options(
+            selectinload(Match.players)
+            .selectinload(MatchPlayer.deck_version)
+            .selectinload(DeckVersion.deck)
+        )
         .all()
     )
+
+    def _display_deck_name(p: MatchPlayer) -> str | None:
+        if p.deck_version is not None:
+            return p.deck_version.deck.name
+        return p.deck_name
 
     matches = []
     for m in rows:
@@ -135,7 +147,7 @@ def list_matches(
             "match_id": m.id,
             "date": m.played_at.isoformat(),
             "players": [p.player_name for p in sorted_players],
-            "decks": [p.deck_name for p in sorted_players],
+            "decks": [_display_deck_name(p) for p in sorted_players],
             "match_winner": m.match_winner,
             "game_count": m.game_count,
             "format": m.format,
