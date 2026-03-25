@@ -143,8 +143,8 @@
   <ConfirmDialog
     :visible="confirmVisible"
     :message="confirmMessage"
-    confirmLabel="エクスポート"
-    @confirm="onConfirmExport"
+    :confirmLabel="confirmLabel"
+    @confirm="onConfirm"
     @cancel="confirmVisible = false"
   />
 </template>
@@ -210,6 +210,8 @@ const expLimit = ref(200)
 const noLimit = ref(false)
 const confirmVisible = ref(false)
 const confirmMessage = ref('')
+const confirmLabel = ref('OK')
+const confirmAction = ref<(() => void) | null>(null)
 const downloading = ref(false)
 const matchCount = ref<number | null>(null)
 
@@ -285,6 +287,11 @@ async function runExport() {
     }
     if (warnings.length > 0) {
       confirmMessage.value = warnings.join(' ') + ' 続けますか？'
+      confirmLabel.value = 'エクスポート'
+      confirmAction.value = async () => {
+        downloading.value = true
+        await doDownload()
+      }
       confirmVisible.value = true
       downloading.value = false
       return
@@ -296,10 +303,9 @@ async function runExport() {
   }
 }
 
-async function onConfirmExport() {
+async function onConfirm() {
   confirmVisible.value = false
-  downloading.value = true
-  await doDownload()
+  await confirmAction.value?.()
 }
 
 async function doDownload() {
@@ -324,8 +330,16 @@ async function doDownload() {
 }
 
 // ── カード辞書: 未取得補完 ────────────────────────────────────────────────
-async function runFetchMissing() {
+function runFetchMissing() {
   if (!player.value || fetching.value) return
+  const count = cardCount.value?.fetchable ?? 0
+  confirmMessage.value = `Scryfall から ${count} 件のカードデータを取得します。続けますか？`
+  confirmLabel.value = '取得'
+  confirmAction.value = doFetchMissing
+  confirmVisible.value = true
+}
+
+async function doFetchMissing() {
   fetching.value = true
   fetchProgress.value = { done: 0, total: cardCount.value?.fetchable ?? 0 }
   try {
