@@ -8,9 +8,8 @@ import { fetchSettings } from '../api/settings'
 // ── module-level shared state (全ビューで共有) ────────────────────────────────
 const player = ref('')
 const opponent = ref('')
-const useDeckManager = ref(true)
-const deckId = ref<number | null>(null)   // デッキ管理モード用
-const deck = ref('')                       // デッキ定義モード用
+const deckId = ref<number | null>(null)   // デッキリストモード用
+const deck = ref('')                       // アーキタイプモード用
 const opponentDeck = ref('')
 const format = ref('')
 const dateFrom = ref('')
@@ -25,14 +24,6 @@ const opponentDeckList = ref<string[]>([])
 const formatList = ref<string[]>([])
 
 const versionId = ref<number | null>(null)
-
-// モード切替時にデッキ選択をリセット
-watch(useDeckManager, () => {
-  deckId.value = null
-  deck.value = ''
-  versionId.value = null
-  versionList.value = []
-})
 
 // デッキ選択変更時にバージョン一覧を再取得
 watch(deckId, async (newId) => {
@@ -184,6 +175,7 @@ export function useFilterState() {
     format.value = ''
     dateFrom.value = ''
     dateTo.value = ''
+    _loadAllLists()
   }
 
   return {
@@ -192,7 +184,6 @@ export function useFilterState() {
     opponentModel,
     formatModel,
     // 直接 v-model 可能な ref
-    useDeckManager,
     deckId,
     deck,
     versionId,

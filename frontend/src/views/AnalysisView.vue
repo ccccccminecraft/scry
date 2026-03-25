@@ -139,7 +139,7 @@ import FilterBar from '../components/FilterBar.vue'
 const { showError } = useToast()
 const {
   playerModel,
-  useDeckManager, deckId, deck, versionId, opponentDeck, dateFrom, dateTo,
+  deckId, deck, versionId, opponentDeck, dateFrom, dateTo,
   player, opponent, format,
   playerList,
   init,
@@ -297,9 +297,9 @@ async function sendMessage(text: string, isGreeting = false) {
       message: text,
       history: history.length > 0 ? history : undefined,
       opponent: opponent.value || null,
-      deck: useDeckManager.value ? null : (deck.value || null),
-      deck_id: useDeckManager.value && !versionId.value ? (deckId.value ?? null) : null,
-      version_id: useDeckManager.value ? (versionId.value ?? null) : null,
+      deck: deckId.value ? null : (deck.value || null),
+      deck_id: !versionId.value ? (deckId.value ?? null) : null,
+      version_id: versionId.value ?? null,
       opponent_deck: opponentDeck.value || null,
       format: format.value || null,
       date_from: dateFrom.value || null,

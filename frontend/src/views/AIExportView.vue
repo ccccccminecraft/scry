@@ -77,7 +77,7 @@ import FilterBar from '../components/FilterBar.vue'
 
 const { showError } = useToast()
 const {
-  useDeckManager, deckId, deck, versionId, opponentDeck, dateFrom, dateTo,
+  deckId, deck, versionId, opponentDeck, dateFrom, dateTo,
   player, opponent, format,
   init,
 } = useFilterState()
@@ -97,15 +97,15 @@ async function loadCount() {
   } catch { /* ignore */ }
 }
 
-watch([player, opponent, useDeckManager, deckId, deck, versionId, opponentDeck, format, dateFrom, dateTo], loadCount)
+watch([player, opponent, deckId, deck, versionId, opponentDeck, format, dateFrom, dateTo], loadCount)
 
 function currentFilters() {
   return {
     player: player.value,
     opponent: opponent.value || undefined,
-    deck_id: useDeckManager.value && !versionId.value ? (deckId.value ?? undefined) : undefined,
-    deck: useDeckManager.value ? undefined : (deck.value || undefined),
-    version_id: useDeckManager.value ? (versionId.value ?? undefined) : undefined,
+    deck_id: !versionId.value ? (deckId.value ?? undefined) : undefined,
+    deck: deckId.value ? undefined : (deck.value || undefined),
+    version_id: versionId.value ?? undefined,
     opponent_deck: opponentDeck.value || undefined,
     format: format.value || undefined,
     date_from: dateFrom.value || undefined,

@@ -155,7 +155,7 @@ import FilterBar from '../components/FilterBar.vue'
 
 const { showError } = useToast()
 const {
-  useDeckManager, deckId, deck, versionId, opponentDeck, dateFrom, dateTo,
+  deckId, deck, versionId, opponentDeck, dateFrom, dateTo,
   player, opponent, format,
   playerList, deckList,
   minDeckMatches,
@@ -163,7 +163,7 @@ const {
 } = useFilterState()
 
 const selectedDeckTile = computed(() => {
-  if (!useDeckManager.value || !deckId.value) return null
+  if (!deckId.value) return null
   const d = deckList.value.find(d => d.id === deckId.value)
   return d?.tile_scryfall_id ? cardImageUrl(d.tile_scryfall_id, 'normal') : null
 })
@@ -240,9 +240,9 @@ async function loadStats() {
     stats.value = await fetchStats({
       player: player.value,
       opponent: opponent.value || undefined,
-      deck_id: useDeckManager.value && !versionId.value ? (deckId.value ?? undefined) : undefined,
-      deck: useDeckManager.value ? undefined : (deck.value || undefined),
-      version_id: useDeckManager.value ? (versionId.value ?? undefined) : undefined,
+      deck_id: !versionId.value ? (deckId.value ?? undefined) : undefined,
+      deck: deckId.value ? undefined : (deck.value || undefined),
+      version_id: versionId.value ?? undefined,
       opponent_deck: opponentDeck.value || undefined,
       format: format.value || undefined,
       date_from: dateFrom.value || undefined,
@@ -256,9 +256,9 @@ async function loadStats() {
 }
 
 function _deckFilters() {
-  if (!useDeckManager.value) return { deck: deck.value || undefined }
   if (versionId.value) return { version_id: versionId.value }
-  return { deck_id: deckId.value ?? undefined }
+  if (deckId.value) return { deck_id: deckId.value }
+  return { deck: deck.value || undefined }
 }
 
 async function loadCardStats() {
@@ -298,7 +298,7 @@ async function loadOpponentCardStats() {
 }
 
 watch(
-  [player, opponent, useDeckManager, deckId, deck, versionId, opponentDeck, format, dateFrom, dateTo],
+  [player, opponent, deckId, deck, versionId, opponentDeck, format, dateFrom, dateTo],
   loadAll,
 )
 
