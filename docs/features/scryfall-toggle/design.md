@@ -119,7 +119,7 @@
 
 ## 影響を受けない機能
 
-- デッキ定義の生成（AI による定義生成）
-- デッキ定義の適用（`/api/decks/apply-definitions`）
+- アーキタイプ定義の生成（AI による定義生成）
+- アーキタイプ定義の適用（`/api/decks/apply-definitions`）
 - MTGA カード同期（`mtga_cards` テーブル、別 API）
 - 対戦履歴のインポート本体（カード名保存は Scryfall 無しでも行う）

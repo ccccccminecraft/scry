@@ -9,7 +9,7 @@
 | `/matches` | MatchListView | 対戦履歴一覧 |
 | `/matches/:match_id` | MatchDetailView | 対戦詳細・アクションログ |
 | `/stats` | StatsView | 統計ダッシュボード |
-| `/decks` | DeckDefinitionsView | デッキ定義管理（自動識別ルール） |
+| `/decks` | DeckDefinitionsView | アーキタイプ定義管理（自動識別ルール） |
 | `/analysis` | AnalysisView | AI チャット分析 |
 | `/export` | AIExportView | AI 用 Markdown エクスポート |
 | `/deck-builder` | DeckBuilderView | デッキ構築管理（バージョン・カードビュー） |
@@ -99,7 +99,7 @@ MTGO / MTGA（Surveil）の2タブ構成。
 
 ---
 
-### DeckDefinitionsView（`/decks`）
+### DeckDefinitionsView（`/decks`）— アーキタイプ定義
 
 - デッキアーキタイプの自動識別ルール管理
 - シグネチャカード・除外カード・閾値を設定
@@ -129,7 +129,7 @@ MTGO / MTGA（Surveil）の2タブ構成。
 
 ---
 
-### DeckBuilderView（`/deck-builder`）
+### DeckBuilderView（`/deck-builder`）— デッキリスト
 
 - デッキ一覧（`GET /api/decklist/decks`）
 - デッキ作成・編集・アーカイブ（論理削除）・完全削除

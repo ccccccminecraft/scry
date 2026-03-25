@@ -44,7 +44,7 @@
         </select>
         <label class="filter-bar__check-label">
           <input type="checkbox" v-model="useDeckManager" />
-          デッキ管理
+          デッキリスト
         </label>
       </div>
     </div>

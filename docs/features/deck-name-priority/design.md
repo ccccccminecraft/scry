@@ -2,18 +2,18 @@
 
 ## 概要
 
-対戦履歴の一覧・詳細画面で表示するデッキ名について、デッキ管理（DeckBuilder）と紐づいている場合はそちらのデッキ名を優先して表示する。
+対戦履歴の一覧・詳細画面で表示するデッキ名について、デッキリスト（DeckBuilder）と紐づいている場合はそちらのデッキ名を優先して表示する。
 
 ---
 
 ## 背景・動機
 
 現在、対戦履歴に表示されるデッキ名は `MatchPlayer.deck_name` から取得している。
-これはデッキ定義（`DeckDefinition`）によって自動判定・付与された名前である。
+これはアーキタイプ定義（`DeckDefinition`）によって自動判定・付与された名前である。
 
-一方、ユーザーが手動でデッキ管理（DeckBuilder）のデッキバージョンを試合に紐づけた場合（`MatchPlayer.deck_version_id`）、そのデッキの正式名称は `DeckVersion → Deck.name` に存在する。
+一方、ユーザーが手動でデッキリスト（DeckBuilder）のデッキバージョンを試合に紐づけた場合（`MatchPlayer.deck_version_id`）、そのデッキの正式名称は `DeckVersion → Deck.name` に存在する。
 
-この2つが異なる場合、デッキ管理側の名前が正しいにも関わらず、デッキ定義側の名前が表示されてしまう。
+この2つが異なる場合、デッキリスト側の名前が正しいにも関わらず、アーキタイプ定義側の名前が表示されてしまう。
 
 ---
 
@@ -21,8 +21,8 @@
 
 ```
 MatchPlayer
-├── deck_name          ... デッキ定義による自動判定名（nullable）
-└── deck_version_id    ... デッキ管理との紐づけ（nullable）
+├── deck_name          ... アーキタイプ定義による自動判定名（nullable）
+└── deck_version_id    ... デッキリストとの紐づけ（nullable）
                               ↓
                          DeckVersion
                          └── deck_id → Deck.name  ← こちらを優先したい
@@ -34,8 +34,8 @@ MatchPlayer
 
 | 条件 | 表示するデッキ名 |
 |------|----------------|
-| `deck_version_id` が設定されている | `Deck.name`（デッキ管理のデッキ名） |
-| `deck_version_id` が NULL | `MatchPlayer.deck_name`（デッキ定義による名前） |
+| `deck_version_id` が設定されている | `Deck.name`（デッキリストのデッキ名） |
+| `deck_version_id` が NULL | `MatchPlayer.deck_name`（アーキタイプ定義による名前） |
 | どちらも NULL / 未設定 | `null`（非表示） |
 
 ---
@@ -85,8 +85,8 @@ MatchPlayer
 
 ## 変更しない箇所
 
-- **`MatchPlayer.deck_name` カラム自体**: 変更しない。デッキ定義による自動判定結果として保持し続ける。
-- **統計・フィルターの `deck` パラメータ**: `MatchPlayer.deck_name` に対する WHERE のまま変更しない（デッキ管理名での絞り込みは既存の `deck_id` / `version_id` パラメータで対応）。
+- **`MatchPlayer.deck_name` カラム自体**: 変更しない。アーキタイプ定義による自動判定結果として保持し続ける。
+- **統計・フィルターの `deck` パラメータ**: `MatchPlayer.deck_name` に対する WHERE のまま変更しない（デッキリスト名での絞り込みは既存の `deck_id` / `version_id` パラメータで対応）。
 - **AI エクスポートのデッキ名**: `matches.py` の `_build_export_markdown()` 内でも `deck_name` を参照しているが、今回は対象外とする（別 issue で検討）。
 
 ---

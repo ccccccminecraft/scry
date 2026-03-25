@@ -179,7 +179,7 @@
       <div class="settings__row">
         <button class="settings__btn settings__btn--danger" @click="resetDialogVisible = true">完全リセット</button>
       </div>
-      <p class="settings__note">完全リセットはすべてのデータ（試合・設定・デッキ定義）を削除します。</p>
+      <p class="settings__note">完全リセットはすべてのデータ（試合・設定・アーキタイプ定義）を削除します。</p>
     </div>
 
     <ConfirmDialog
@@ -207,7 +207,7 @@
 
     <TypeToConfirmDialog
       :visible="resetDialogVisible"
-      message="すべてのデータ（試合・設定・デッキ定義）が完全に削除されます。この操作は取り消せません。"
+      message="すべてのデータ（試合・設定・アーキタイプ定義）が完全に削除されます。この操作は取り消せません。"
       confirm-text="削除する"
       @confirm="onConfirmReset"
       @cancel="resetDialogVisible = false"
@@ -369,7 +369,7 @@ async function onConfirmRestore() {
 }
 
 function handleDeleteAllMatches() {
-  confirmMessage.value = '全試合データを削除しますか？設定・デッキ定義は保持されます。'
+  confirmMessage.value = '全試合データを削除しますか？設定・アーキタイプ定義は保持されます。'
   pendingAction.value = async () => {
     const count = await deleteAllMatches()
     if (count === 0) {

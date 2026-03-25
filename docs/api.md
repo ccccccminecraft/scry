@@ -115,7 +115,7 @@
 
 ---
 
-### デッキ管理（デッキリスト）
+### デッキリスト
 
 | メソッド | パス | 説明 |
 |----------|------|------|
@@ -137,19 +137,19 @@
 
 ---
 
-### デッキ定義（自動識別）
+### アーキタイプ定義（自動識別）
 
 | メソッド | パス | 説明 |
 |----------|------|------|
-| GET | `/api/deck-definitions` | デッキ定義一覧 |
-| POST | `/api/deck-definitions` | デッキ定義作成 |
-| PUT | `/api/deck-definitions/{definition_id}` | デッキ定義更新 |
-| DELETE | `/api/deck-definitions/{definition_id}` | デッキ定義削除 |
-| POST | `/api/deck-definitions/generate` | AI によるデッキ定義自動生成 |
-| POST | `/api/deck-definitions/import` | デッキ定義 JSON インポート |
-| GET | `/api/deck-definitions/export` | デッキ定義 JSON エクスポート |
+| GET | `/api/deck-definitions` | アーキタイプ定義一覧 |
+| POST | `/api/deck-definitions` | アーキタイプ定義作成 |
+| PUT | `/api/deck-definitions/{definition_id}` | アーキタイプ定義更新 |
+| DELETE | `/api/deck-definitions/{definition_id}` | アーキタイプ定義削除 |
+| POST | `/api/deck-definitions/generate` | AI によるアーキタイプ定義自動生成 |
+| POST | `/api/deck-definitions/import` | アーキタイプ定義 JSON インポート |
+| GET | `/api/deck-definitions/export` | アーキタイプ定義 JSON エクスポート |
 | PATCH | `/api/deck-bulk` | デッキ名一括更新 |
-| POST | `/api/decks/apply-definitions` | デッキ定義をマッチに一括適用 |
+| POST | `/api/decks/apply-definitions` | アーキタイプ定義をマッチに一括適用 |
 
 ---
 

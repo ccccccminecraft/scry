@@ -1,6 +1,6 @@
 <template>
   <div class="deck-def">
-    <h1 class="deck-def__title">デッキ定義管理</h1>
+    <h1 class="deck-def__title">アーキタイプ定義管理</h1>
 
     <ConfirmDialog
       :visible="confirmVisible"
@@ -78,21 +78,21 @@
 
     <!-- 既存試合への適用 -->
     <div class="deck-def__section">
-      <div class="deck-def__section-title">既存試合へのデッキ定義適用</div>
+      <div class="deck-def__section-title">既存試合へのアーキタイプ定義適用</div>
       <div class="deck-def__bulk-form">
         <div class="deck-def__apply-btns">
           <button
             class="deck-def__btn deck-def__btn--primary"
             :disabled="applying"
             @click="runApply(false)"
-          >{{ applying ? '適用中...' : 'デッキ名未設定の試合に適用' }}</button>
+          >{{ applying ? '適用中...' : 'アーキタイプ未設定の試合に適用' }}</button>
           <button
             class="deck-def__btn"
             :disabled="applying"
             @click="runApply(true)"
           >{{ applying ? '適用中...' : 'すべての試合に適用（上書き）' }}</button>
         </div>
-        <p class="deck-def__apply-note">「デッキ名未設定」は deck_name が空の試合のみを対象にします。「すべての試合」は既存のデッキ名も上書きします。</p>
+        <p class="deck-def__apply-note">「アーキタイプ未設定」はアーキタイプが判定されていない試合のみを対象にします。「すべての試合」は判定済みのアーキタイプも上書きします。</p>
       </div>
       <div class="deck-def__apply-divider"></div>
       <div class="deck-def__bulk-form">
@@ -113,7 +113,7 @@
           @click="runApplyTargetDeck"
         >{{ applying ? '適用中...' : '指定デッキに適用（上書き）' }}</button>
       </div>
-      <p class="deck-def__apply-note">指定したデッキ名の試合を対象に、デッキ定義を再判定して上書きします。</p>
+      <p class="deck-def__apply-note">指定したアーキタイプの試合を対象に、アーキタイプ定義を再判定して上書きします。</p>
       <div class="deck-def__apply-divider"></div>
       <!-- unknown 試合への適用 -->
       <div class="deck-def__unknown-block">
@@ -133,8 +133,8 @@
           </label>
           <label class="deck-def__check-label">
             <input type="checkbox" v-model="unknownInferFormat" />
-            フォーマットをデッキ定義から推定する
-            <span class="deck-def__check-note">※ format が設定されたデッキ定義にのみ適用</span>
+            フォーマットをアーキタイプ定義から推定する
+            <span class="deck-def__check-note">※ format が設定されたアーキタイプ定義にのみ適用</span>
           </label>
         </div>
         <button
@@ -167,10 +167,10 @@
       </div>
     </div>
 
-    <!-- デッキ定義一覧 -->
+    <!-- アーキタイプ定義一覧 -->
     <div class="deck-def__section">
       <div class="deck-def__section-header">
-        <div class="deck-def__section-title">デッキ定義一覧</div>
+        <div class="deck-def__section-title">アーキタイプ定義一覧</div>
         <div class="deck-def__list-controls">
           <select v-model="filterDefFormat" class="deck-def__select deck-def__select--sm">
             <option value="">フォーマット: すべて</option>
@@ -180,8 +180,8 @@
         </div>
       </div>
 
-      <div v-if="definitions.length === 0" class="deck-def__empty">デッキ定義がありません</div>
-      <div v-else-if="filteredDefinitions.length === 0" class="deck-def__empty">該当するデッキ定義がありません</div>
+      <div v-if="definitions.length === 0" class="deck-def__empty">アーキタイプ定義がありません</div>
+      <div v-else-if="filteredDefinitions.length === 0" class="deck-def__empty">該当するアーキタイプ定義がありません</div>
 
       <table v-else class="deck-def__table">
         <thead>
@@ -218,7 +218,7 @@
     <!-- 生成プレビューモーダル -->
     <div v-if="genPreview" class="deck-def__overlay" @click.self="genPreview = null">
       <div class="deck-def__modal deck-def__modal--wide">
-        <h2 class="deck-def__modal-title">生成されたデッキ定義（{{ genPreview.definitions.length }}件）</h2>
+        <h2 class="deck-def__modal-title">生成されたアーキタイプ定義（{{ genPreview.definitions.length }}件）</h2>
         <p class="deck-def__gen-meta">
           フォーマット: {{ genPreview.format ?? '問わず' }} &nbsp;／&nbsp;
           生成日時: {{ new Date(genPreview.generated_at).toLocaleString('ja-JP') }}
@@ -256,7 +256,7 @@
     <!-- 編集モーダル -->
     <div v-if="editing" class="deck-def__overlay" @click.self="editing = null">
       <div class="deck-def__modal">
-        <h2 class="deck-def__modal-title">{{ editingId ? 'デッキ定義を編集' : 'デッキ定義を作成' }}</h2>
+        <h2 class="deck-def__modal-title">{{ editingId ? 'アーキタイプ定義を編集' : 'アーキタイプ定義を作成' }}</h2>
 
         <div class="deck-def__form">
           <div class="deck-def__field">
@@ -372,9 +372,9 @@ async function loadUnknownCount() {
 
 function runApplyUnknown() {
   if (unknownCount.value === 0) return
-  const lines: string[] = ['フォーマットが「unknown」の試合にデッキ定義を照合します。']
+  const lines: string[] = ['フォーマットが「unknown」の試合にアーキタイプ定義を照合します。']
   if (unknownApplyDeckName.value) lines.push('・デッキ名が未設定の試合にデッキ名を設定します。')
-  if (unknownInferFormat.value) lines.push('・デッキ定義に format が設定されている場合、フォーマットも更新します。')
+  if (unknownInferFormat.value) lines.push('・アーキタイプ定義に format が設定されている場合、フォーマットも更新します。')
   showConfirm(lines.join('\n'), '実行', async () => {
     applyingUnknown.value = true
     try {
@@ -402,7 +402,7 @@ function runApplyTargetDeck() {
   if (!deck) return
   const formatLabel = applyTargetFormat.value ? `フォーマット「${applyTargetFormat.value}」の` : ''
   showConfirm(
-    `${formatLabel}デッキ「${deck}」の試合にデッキ定義を再適用します。既存のデッキ名も上書きされます。よろしいですか？`,
+    `${formatLabel}デッキ「${deck}」の試合にアーキタイプ定義を再適用します。既存のデッキ名も上書きされます。よろしいですか？`,
     '適用',
     async () => {
       applying.value = true
@@ -424,8 +424,8 @@ function runApplyTargetDeck() {
 
 function runApply(overwrite: boolean) {
   const message = overwrite
-    ? 'すべての試合にデッキ定義を適用します。既存のデッキ名も上書きされます。よろしいですか？'
-    : 'デッキ名が未設定の試合にデッキ定義を適用します。よろしいですか？'
+    ? 'すべての試合にアーキタイプ定義を適用します。既存のデッキ名も上書きされます。よろしいですか？'
+    : 'デッキ名が未設定の試合にアーキタイプ定義を適用します。よろしいですか？'
   showConfirm(message, '適用', async () => {
     applying.value = true
     try {
@@ -489,7 +489,7 @@ function runImport() {
 
 function runExport() {
   showConfirm(
-    '現在のデッキ定義をJSONファイルとしてエクスポートします。よろしいですか？',
+    '現在のアーキタイプ定義をJSONファイルとしてエクスポートします。よろしいですか？',
     'エクスポート',
     async () => {
       try {
