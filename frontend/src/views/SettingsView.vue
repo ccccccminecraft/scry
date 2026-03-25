@@ -567,7 +567,8 @@ async function removeApiKey() {
 }
 
 .settings__input {
-  flex: 1;
+  width: 320px;
+  flex-shrink: 0;
   padding: 6px 10px;
   border: 1px solid #c8b89a;
   border-radius: 4px;
@@ -661,7 +662,8 @@ async function removeApiKey() {
 .settings__file-name {
   font-size: 13px;
   color: #7a6a55;
-  flex: 1;
+  width: 320px;
+  flex-shrink: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -694,7 +696,8 @@ async function removeApiKey() {
   font-size: 12px;
   color: #5a5040;
   font-family: monospace;
-  flex: 1;
+  width: 320px;
+  flex-shrink: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

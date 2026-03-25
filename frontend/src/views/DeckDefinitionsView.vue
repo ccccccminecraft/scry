@@ -111,7 +111,7 @@
           class="deck-def__btn deck-def__btn--primary"
           :disabled="applying || !applyTargetDeck.trim()"
           @click="runApplyTargetDeck"
-        >{{ applying ? '適用中...' : '指定デッキに適用（上書き）' }}</button>
+        >{{ applying ? '適用中...' : '指定アーキタイプに適用（上書き）' }}</button>
       </div>
       <p class="deck-def__apply-note">指定したアーキタイプの試合を対象に、アーキタイプ定義を再判定して上書きします。</p>
       <div class="deck-def__apply-divider"></div>
@@ -955,8 +955,8 @@ onMounted(async () => {
 }
 
 .deck-def__field--grow {
-  flex: 1;
-  min-width: 200px;
+  width: 240px;
+  flex-shrink: 0;
 }
 
 .deck-def__btn--claude {
