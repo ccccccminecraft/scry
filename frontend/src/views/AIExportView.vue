@@ -39,7 +39,7 @@
         </label>
         <label class="ai-export__checkbox-label" :class="{ 'ai-export__checkbox-label--disabled': !inclMatches }">
           <input type="checkbox" v-model="inclActions" class="ai-export__checkbox" :disabled="!inclMatches" />
-          <span class="ai-export__sub-indent">アクション詳細</span>
+          アクション詳細
         </label>
       </div>
     </div>
@@ -94,12 +94,39 @@ const {
   init,
 } = useFilterState()
 
-const inclSummary = ref(true)
-const inclDeckStats = ref(true)
-const inclCardStats = ref(true)
-const inclDeckList = ref(true)
-const inclMatches = ref(true)
-const inclActions = ref(false)
+const EXPORT_SETTINGS_KEY = 'scry_export_settings'
+
+function _loadExportSettings() {
+  try {
+    const raw = localStorage.getItem(EXPORT_SETTINGS_KEY)
+    if (!raw) return {}
+    return JSON.parse(raw) as Record<string, unknown>
+  } catch { return {} }
+}
+
+function _saveExportSettings() {
+  try {
+    localStorage.setItem(EXPORT_SETTINGS_KEY, JSON.stringify({
+      inclSummary: inclSummary.value,
+      inclDeckStats: inclDeckStats.value,
+      inclCardStats: inclCardStats.value,
+      inclDeckList: inclDeckList.value,
+      inclMatches: inclMatches.value,
+      inclActions: inclActions.value,
+    }))
+  } catch { /* ignore */ }
+}
+
+const _s = _loadExportSettings()
+const _bool = (key: string, def: boolean) =>
+  typeof _s[key] === 'boolean' ? (_s[key] as boolean) : def
+
+const inclSummary = ref(_bool('inclSummary', true))
+const inclDeckStats = ref(_bool('inclDeckStats', true))
+const inclCardStats = ref(_bool('inclCardStats', true))
+const inclDeckList = ref(_bool('inclDeckList', true))
+const inclMatches = ref(_bool('inclMatches', true))
+const inclActions = ref(_bool('inclActions', false))
 const expLimit = ref(200)
 const noLimit = ref(false)
 const confirmVisible = ref(false)
@@ -114,6 +141,9 @@ const nothingSelected = computed(() =>
 
 // 対戦一覧がオフになったらアクション詳細もオフ
 watch(inclMatches, (v) => { if (!v) inclActions.value = false })
+
+// 出力内容の変更を保存
+watch([inclSummary, inclDeckStats, inclCardStats, inclDeckList, inclMatches, inclActions], _saveExportSettings)
 
 async function loadCount() {
   if (!player.value) { matchCount.value = null; return }
@@ -301,10 +331,6 @@ onMounted(async () => {
 .ai-export__checkbox-label--disabled {
   opacity: 0.45;
   cursor: default;
-}
-
-.ai-export__sub-indent {
-  padding-left: 8px;
 }
 
 .ai-export__checkbox {
