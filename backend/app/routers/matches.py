@@ -195,7 +195,12 @@ def export_matches(
     format: str | None = Query(default=None),
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
-    detail_level: str = Query(default="matches"),
+    include_summary: bool = Query(default=True),
+    include_deck_stats: bool = Query(default=True),
+    include_card_stats: bool = Query(default=True),
+    include_deck_list: bool = Query(default=True),
+    include_matches: bool = Query(default=True),
+    include_actions: bool = Query(default=False),
     limit: int = Query(default=200, ge=1, le=1000),
     no_limit: bool = Query(default=False),
     db: Session = Depends(get_db),
@@ -220,9 +225,15 @@ def export_matches(
     else:
         output_version_ids = []
     opponent_deck_label = "、".join(opponent_decks) or None
-    markdown = _build_export_markdown(player, db, match_ids, detail_level, effective_limit,
+    markdown = _build_export_markdown(player, db, match_ids, effective_limit,
                                       opponent, deck_label, opponent_deck_label, format, date_from, date_to,
-                                      version_ids=output_version_ids)
+                                      version_ids=output_version_ids,
+                                      include_summary=include_summary,
+                                      include_deck_stats=include_deck_stats,
+                                      include_card_stats=include_card_stats,
+                                      include_deck_list=include_deck_list,
+                                      include_matches=include_matches,
+                                      include_actions=include_actions)
 
     from datetime import datetime as dt
     date_str = dt.now().strftime("%Y%m%d%H%M%S")
@@ -238,7 +249,6 @@ def _build_export_markdown(
     player: str,
     db: Session,
     match_ids: list[str],
-    detail_level: str,
     limit: int | None,
     opponent: str | None,
     deck: str | None,
@@ -247,6 +257,12 @@ def _build_export_markdown(
     date_from: str | None,
     date_to: str | None,
     version_ids: list[int] | None = None,
+    include_summary: bool = True,
+    include_deck_stats: bool = True,
+    include_card_stats: bool = True,
+    include_deck_list: bool = True,
+    include_matches: bool = True,
+    include_actions: bool = False,
 ) -> str:
     from datetime import datetime as dt
     from app.routers.stats import _calc_deck_stats
@@ -285,180 +301,174 @@ def _build_export_markdown(
         lines.append("*対象データなし*")
         return "\n".join(lines)
 
-    # ── サマリー ──────────────────────────────────────────────────────────
-    matches_all = db.query(Match).filter(Match.id.in_(match_ids)).all()
-    wins = sum(1 for m in matches_all if m.match_winner == player)
-    losses = len(matches_all) - wins
-    win_rate = wins / len(matches_all) if matches_all else 0.0
-
-    games_all = db.query(Game).filter(Game.match_id.in_(match_ids)).all()
-    total_games = len(games_all)
-    first_games = [g for g in games_all if g.first_player == player]
-    second_games = [g for g in games_all if g.first_player != player]
-    first_wr = sum(1 for g in first_games if g.winner == player) / len(first_games) if first_games else 0.0
-    second_wr = sum(1 for g in second_games if g.winner == player) / len(second_games) if second_games else 0.0
-    avg_turns = sum(g.turns for g in games_all) / total_games if total_games else 0.0
-
+    # 統計計算（サマリー・デッキ別勝率・カード統計いずれかが必要な場合のみ実行）
+    need_stats = include_summary or include_deck_stats or include_card_stats
+    matches_all = db.query(Match).filter(Match.id.in_(match_ids)).all() if need_stats else []
+    games_all = db.query(Game).filter(Game.match_id.in_(match_ids)).all() if need_stats else []
     game_ids = [g.id for g in games_all]
-    mul_game_ids = set(
-        r[0] for r in db.query(Mulligan.game_id)
-        .filter(Mulligan.game_id.in_(game_ids), Mulligan.player_name == player, Mulligan.count > 0)
-        .distinct().all()
-    )
-    mulligan_rate = len(mul_game_ids) / total_games if total_games else 0.0
 
-    lines += [
-        "## サマリー",
-        "",
-        "| 項目 | 値 |",
-        "|------|-----|",
-        f"| 総マッチ数 | {len(matches_all)} |",
-        f"| 勝利 / 敗北 | {wins} / {losses} |",
-        f"| 勝率 | {win_rate:.1%} |",
-        f"| 先手勝率 | {first_wr:.1%} |",
-        f"| 後手勝率 | {second_wr:.1%} |",
-        f"| 平均ターン数 | {avg_turns:.1f} |",
-        f"| マリガン率 | {mulligan_rate:.1%} |",
-        "",
-    ]
-
-    deck_stats = _calc_deck_stats(db, player, match_ids)
-    if deck_stats:
+    # ── サマリー ──────────────────────────────────────────────────────────
+    if include_summary:
+        wins = sum(1 for m in matches_all if m.match_winner == player)
+        losses = len(matches_all) - wins
+        win_rate = wins / len(matches_all) if matches_all else 0.0
+        total_games = len(games_all)
+        first_games = [g for g in games_all if g.first_player == player]
+        second_games = [g for g in games_all if g.first_player != player]
+        first_wr = sum(1 for g in first_games if g.winner == player) / len(first_games) if first_games else 0.0
+        second_wr = sum(1 for g in second_games if g.winner == player) / len(second_games) if second_games else 0.0
+        avg_turns = sum(g.turns for g in games_all) / total_games if total_games else 0.0
+        mul_game_ids = set(
+            r[0] for r in db.query(Mulligan.game_id)
+            .filter(Mulligan.game_id.in_(game_ids), Mulligan.player_name == player, Mulligan.count > 0)
+            .distinct().all()
+        )
+        mulligan_rate = len(mul_game_ids) / total_games if total_games else 0.0
         lines += [
-            "### デッキ別勝率",
+            "## サマリー",
             "",
-            "| デッキ | マッチ数 | 勝率 |",
-            "|--------|---------|------|",
+            "| 項目 | 値 |",
+            "|------|-----|",
+            f"| 総マッチ数 | {len(matches_all)} |",
+            f"| 勝利 / 敗北 | {wins} / {losses} |",
+            f"| 勝率 | {win_rate:.1%} |",
+            f"| 先手勝率 | {first_wr:.1%} |",
+            f"| 後手勝率 | {second_wr:.1%} |",
+            f"| 平均ターン数 | {avg_turns:.1f} |",
+            f"| マリガン率 | {mulligan_rate:.1%} |",
+            "",
         ]
-        for d in deck_stats:
-            lines.append(f"| {d['deck_name']} | {d['matches']} | {d['win_rate']:.1%} |")
-        lines.append("")
+
+    # ── デッキ別勝率 ──────────────────────────────────────────────────────
+    if include_deck_stats:
+        deck_stats = _calc_deck_stats(db, player, match_ids)
+        if deck_stats:
+            lines += [
+                "## デッキ別勝率",
+                "",
+                "| デッキ | マッチ数 | 勝率 |",
+                "|--------|---------|------|",
+            ]
+            for d in deck_stats:
+                lines.append(f"| {d['deck_name']} | {d['matches']} | {d['win_rate']:.1%} |")
+            lines.append("")
 
     # ── カード統計 ────────────────────────────────────────────────────────
-    from app.routers.stats import _calc_card_stats
-
-    self_cards = _calc_card_stats(db, player, game_ids, "self", limit=20)
-    opp_cards  = _calc_card_stats(db, player, game_ids, "opponent", limit=20)
-
-    if self_cards:
-        lines += [
-            "### カード統計（選択プレイヤー Top 20）",
-            "",
-            "| カード名 | 使用回数 | 登場ゲーム | 勝率 |",
-            "|---------|---------|-----------|------|",
-        ]
-        for c in self_cards:
-            lines.append(f"| {c['card_name']} | {c['play_count']} | {c['game_count']} | {c['win_rate']:.1%} |")
-        lines.append("")
-
-    if opp_cards:
-        lines += [
-            "### カード統計（対戦相手 Top 20）",
-            "",
-            "| カード名 | 使用回数 | 登場ゲーム | 選択プレイヤー勝率 |",
-            "|---------|---------|-----------|-----------------|",
-        ]
-        for c in opp_cards:
-            lines.append(f"| {c['card_name']} | {c['play_count']} | {c['game_count']} | {c['win_rate']:.1%} |")
-        lines.append("")
+    if include_card_stats:
+        from app.routers.stats import _calc_card_stats
+        self_cards = _calc_card_stats(db, player, game_ids, "self", limit=20)
+        opp_cards  = _calc_card_stats(db, player, game_ids, "opponent", limit=20)
+        if self_cards:
+            lines += [
+                "## カード統計（選択プレイヤー Top 20）",
+                "",
+                "| カード名 | 使用回数 | 登場ゲーム | 勝率 |",
+                "|---------|---------|-----------|------|",
+            ]
+            for c in self_cards:
+                lines.append(f"| {c['card_name']} | {c['play_count']} | {c['game_count']} | {c['win_rate']:.1%} |")
+            lines.append("")
+        if opp_cards:
+            lines += [
+                "## カード統計（対戦相手 Top 20）",
+                "",
+                "| カード名 | 使用回数 | 登場ゲーム | 選択プレイヤー勝率 |",
+                "|---------|---------|-----------|-----------------|",
+            ]
+            for c in opp_cards:
+                lines.append(f"| {c['card_name']} | {c['play_count']} | {c['game_count']} | {c['win_rate']:.1%} |")
+            lines.append("")
 
     # ── デッキリスト ──────────────────────────────────────────────────────
-    for vid in (version_ids or []):
-        ver = db.get(DeckVersion, vid)
-        if not ver:
-            continue
-        main_cards = [c for c in ver.cards if not c.is_sideboard]
-        side_cards = [c for c in ver.cards if c.is_sideboard]
-        if not main_cards and not side_cards:
-            continue
-        label = f"{ver.deck.name} v{ver.version_number}"
-        if ver.memo:
-            label += f" {ver.memo}"
-        lines += [f"## デッキリスト: {label}", ""]
-        if main_cards:
-            lines += [f"### メインデッキ ({sum(c.quantity for c in main_cards)})", "",
-                       "| 枚数 | カード名 |", "|------|---------|"]
-            for c in sorted(main_cards, key=lambda x: x.card.name):
-                lines.append(f"| {c.quantity} | {c.card.name} |")
-            lines.append("")
-        if side_cards:
-            lines += [f"### サイドボード ({sum(c.quantity for c in side_cards)})", "",
-                       "| 枚数 | カード名 |", "|------|---------|"]
-            for c in sorted(side_cards, key=lambda x: x.card.name):
-                lines.append(f"| {c.quantity} | {c.card.name} |")
-            lines.append("")
-
-    if detail_level == "summary":
-        return "\n".join(lines)
-
-    # ── マッチ一覧 ────────────────────────────────────────────────────────
-    lines += ["---", "", "## 対戦一覧", ""]
-
-    q = (
-        db.query(Match)
-        .filter(Match.id.in_(match_ids))
-        .order_by(Match.played_at.desc())
-    )
-    target_matches = q.limit(limit).all() if limit is not None else q.all()
-
-    for i, m in enumerate(target_matches, 1):
-        date_str = m.played_at.strftime("%Y-%m-%d %H:%M")
-        fmt = m.format or "—"
-
-        player_mp = next((p for p in m.players if p.player_name == player), None)
-        opponent_mp = next((p for p in m.players if p.player_name != player), None)
-        player_deck_name = player_mp.deck_name if player_mp else None
-        opponent_name = opponent_mp.player_name if opponent_mp else "—"
-        opponent_deck_name = opponent_mp.deck_name if opponent_mp else None
-
-        sorted_games = sorted(m.games, key=lambda g: g.game_number)
-        wins_g = sum(1 for g in sorted_games if g.winner == player)
-        losses_g = len(sorted_games) - wins_g
-        result = "勝利" if m.match_winner == player else "敗北"
-
-        lines += [
-            f"### [{i}] {date_str} — {fmt}",
-            "",
-            f"- **対戦相手**: {opponent_name}",
-            f"- **使用デッキ**: {player_deck_name or '—'}",
-            f"- **相手デッキ**: {opponent_deck_name or '—'}",
-            f"- **結果**: {result} ({wins_g}-{losses_g})",
-            "",
-            "| ゲーム | 結果 | 先後 | ターン数 | マリガン |",
-            "|--------|------|------|---------|---------|",
-        ]
-
-        for g in sorted_games:
-            g_result = "勝利" if g.winner == player else "敗北"
-            first_second = "先手" if g.first_player == player else "後手"
-            mul_count = next((mul.count for mul in g.mulligans if mul.player_name == player), 0)
-            mul_str = "なし" if mul_count == 0 else f"{mul_count}回"
-            lines.append(f"| Game {g.game_number} | {g_result} | {first_second} | {g.turns} | {mul_str} |")
-
-        lines.append("")
-
-        if detail_level == "actions":
-            for g in sorted_games:
-                actions = (
-                    db.query(Action)
-                    .filter(Action.game_id == g.id)
-                    .order_by(Action.sequence)
-                    .all()
-                )
-                if not actions:
-                    continue
-                lines += [
-                    f"#### Game {g.game_number} アクション詳細",
-                    "",
-                    "| ターン | プレイヤー | 種別 | カード | 対象 |",
-                    "|--------|-----------|------|--------|------|",
-                ]
-                for a in actions:
-                    lines.append(
-                        f"| {a.turn} | {a.player_name} | {a.action_type}"
-                        f" | {a.card_name or '—'} | {a.target_name or '—'} |"
-                    )
+    if include_deck_list:
+        for vid in (version_ids or []):
+            ver = db.get(DeckVersion, vid)
+            if not ver:
+                continue
+            main_cards = [c for c in ver.cards if not c.is_sideboard]
+            side_cards = [c for c in ver.cards if c.is_sideboard]
+            if not main_cards and not side_cards:
+                continue
+            label = f"{ver.deck.name} v{ver.version_number}"
+            if ver.memo:
+                label += f" {ver.memo}"
+            lines += [f"## デッキリスト: {label}", ""]
+            if main_cards:
+                lines += [f"### メインデッキ ({sum(c.quantity for c in main_cards)})", "",
+                           "| 枚数 | カード名 |", "|------|---------|"]
+                for c in sorted(main_cards, key=lambda x: x.card.name):
+                    lines.append(f"| {c.quantity} | {c.card.name} |")
                 lines.append("")
+            if side_cards:
+                lines += [f"### サイドボード ({sum(c.quantity for c in side_cards)})", "",
+                           "| 枚数 | カード名 |", "|------|---------|"]
+                for c in sorted(side_cards, key=lambda x: x.card.name):
+                    lines.append(f"| {c.quantity} | {c.card.name} |")
+                lines.append("")
+
+    # ── 対戦一覧 ──────────────────────────────────────────────────────────
+    if include_matches:
+        lines += ["---", "", "## 対戦一覧", ""]
+        q = (
+            db.query(Match)
+            .filter(Match.id.in_(match_ids))
+            .order_by(Match.played_at.desc())
+        )
+        target_matches = q.limit(limit).all() if limit is not None else q.all()
+
+        for i, m in enumerate(target_matches, 1):
+            date_str = m.played_at.strftime("%Y-%m-%d %H:%M")
+            fmt = m.format or "—"
+            player_mp = next((p for p in m.players if p.player_name == player), None)
+            opponent_mp = next((p for p in m.players if p.player_name != player), None)
+            player_deck_name = player_mp.deck_name if player_mp else None
+            opponent_name = opponent_mp.player_name if opponent_mp else "—"
+            opponent_deck_name = opponent_mp.deck_name if opponent_mp else None
+            sorted_games = sorted(m.games, key=lambda g: g.game_number)
+            wins_g = sum(1 for g in sorted_games if g.winner == player)
+            losses_g = len(sorted_games) - wins_g
+            result = "勝利" if m.match_winner == player else "敗北"
+            lines += [
+                f"### [{i}] {date_str} — {fmt}",
+                "",
+                f"- **対戦相手**: {opponent_name}",
+                f"- **使用デッキ**: {player_deck_name or '—'}",
+                f"- **相手デッキ**: {opponent_deck_name or '—'}",
+                f"- **結果**: {result} ({wins_g}-{losses_g})",
+                "",
+                "| ゲーム | 結果 | 先後 | ターン数 | マリガン |",
+                "|--------|------|------|---------|---------|",
+            ]
+            for g in sorted_games:
+                g_result = "勝利" if g.winner == player else "敗北"
+                first_second = "先手" if g.first_player == player else "後手"
+                mul_count = next((mul.count for mul in g.mulligans if mul.player_name == player), 0)
+                mul_str = "なし" if mul_count == 0 else f"{mul_count}回"
+                lines.append(f"| Game {g.game_number} | {g_result} | {first_second} | {g.turns} | {mul_str} |")
+            lines.append("")
+
+            if include_actions:
+                for g in sorted_games:
+                    actions = (
+                        db.query(Action)
+                        .filter(Action.game_id == g.id)
+                        .order_by(Action.sequence)
+                        .all()
+                    )
+                    if not actions:
+                        continue
+                    lines += [
+                        f"#### Game {g.game_number} アクション詳細",
+                        "",
+                        "| ターン | プレイヤー | 種別 | カード | 対象 |",
+                        "|--------|-----------|------|--------|------|",
+                    ]
+                    for a in actions:
+                        lines.append(
+                            f"| {a.turn} | {a.player_name} | {a.action_type}"
+                            f" | {a.card_name or '—'} | {a.target_name or '—'} |"
+                        )
+                    lines.append("")
 
     return "\n".join(lines)
 

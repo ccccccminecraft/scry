@@ -16,34 +16,46 @@
     <!-- 出力内容 -->
     <div class="ai-export__section">
       <div class="ai-export__section-label">出力内容</div>
-      <div class="ai-export__radios">
-        <label class="ai-export__radio">
-          <input type="radio" v-model="expDetailLevel" value="summary" />
-          サマリーのみ（統計サマリー＋デッキ別勝率＋カード統計）
+      <div class="ai-export__checks">
+        <label class="ai-export__checkbox-label">
+          <input type="checkbox" v-model="inclSummary" class="ai-export__checkbox" />
+          サマリー
         </label>
-        <label class="ai-export__radio">
-          <input type="radio" v-model="expDetailLevel" value="matches" />
-          マッチ一覧あり（＋各マッチの基本情報・ゲーム結果）
+        <label class="ai-export__checkbox-label">
+          <input type="checkbox" v-model="inclDeckStats" class="ai-export__checkbox" />
+          デッキ別勝率
         </label>
-        <label class="ai-export__radio">
-          <input type="radio" v-model="expDetailLevel" value="actions" />
-          アクション詳細あり（＋各ゲームのターン別アクション）
+        <label class="ai-export__checkbox-label">
+          <input type="checkbox" v-model="inclCardStats" class="ai-export__checkbox" />
+          カード統計
+        </label>
+        <label class="ai-export__checkbox-label">
+          <input type="checkbox" v-model="inclDeckList" class="ai-export__checkbox" />
+          デッキリスト
+        </label>
+        <label class="ai-export__checkbox-label">
+          <input type="checkbox" v-model="inclMatches" class="ai-export__checkbox" />
+          対戦一覧
+        </label>
+        <label class="ai-export__checkbox-label" :class="{ 'ai-export__checkbox-label--disabled': !inclMatches }">
+          <input type="checkbox" v-model="inclActions" class="ai-export__checkbox" :disabled="!inclMatches" />
+          <span class="ai-export__sub-indent">アクション詳細</span>
         </label>
       </div>
     </div>
 
     <!-- 件数上限 -->
-    <div class="ai-export__section ai-export__section--fixed">
-      <div class="ai-export__section-label">件数上限</div>
+    <div class="ai-export__section" :class="{ 'ai-export__section--disabled': !inclMatches }">
+      <div class="ai-export__section-label">件数上限（対戦一覧）</div>
       <div class="ai-export__limit-row">
         <label class="ai-export__checkbox-label">
-          <input type="checkbox" v-model="noLimit" class="ai-export__checkbox" />
+          <input type="checkbox" v-model="noLimit" class="ai-export__checkbox" :disabled="!inclMatches" />
           制限なし（全件）
         </label>
       </div>
       <div v-if="!noLimit" class="ai-export__limit-row">
         <span class="ai-export__label">直近</span>
-        <input v-model.number="expLimit" type="number" min="1" max="1000" class="ai-export__limit-input" />
+        <input v-model.number="expLimit" type="number" min="1" max="1000" class="ai-export__limit-input" :disabled="!inclMatches" />
         <span class="ai-export__label">件</span>
       </div>
     </div>
@@ -52,7 +64,7 @@
     <div class="ai-export__footer">
       <button
         class="ai-export__btn ai-export__btn--primary"
-        :disabled="!player || downloading"
+        :disabled="!player || downloading || nothingSelected"
         @click="runExport"
       >{{ downloading ? '処理中…' : 'エクスポート' }}</button>
     </div>
@@ -68,8 +80,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
-import { fetchExportCount, fetchExportMarkdown, type ExportDetailLevel } from '../api/matches'
+import { ref, computed, watch, onMounted } from 'vue'
+import { fetchExportCount, fetchExportMarkdown } from '../api/matches'
 import { useToast } from '../composables/useToast'
 import { useFilterState } from '../composables/useFilterState'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
@@ -82,13 +94,26 @@ const {
   init,
 } = useFilterState()
 
-const expDetailLevel = ref<ExportDetailLevel>('matches')
+const inclSummary = ref(true)
+const inclDeckStats = ref(true)
+const inclCardStats = ref(true)
+const inclDeckList = ref(true)
+const inclMatches = ref(true)
+const inclActions = ref(false)
 const expLimit = ref(200)
 const noLimit = ref(false)
 const confirmVisible = ref(false)
 const confirmMessage = ref('')
 const downloading = ref(false)
 const matchCount = ref<number | null>(null)
+
+const nothingSelected = computed(() =>
+  !inclSummary.value && !inclDeckStats.value && !inclCardStats.value &&
+  !inclDeckList.value && !inclMatches.value
+)
+
+// 対戦一覧がオフになったらアクション詳細もオフ
+watch(inclMatches, (v) => { if (!v) inclActions.value = false })
 
 async function loadCount() {
   if (!player.value) { matchCount.value = null; return }
@@ -125,13 +150,15 @@ async function runExport() {
     const count = await fetchExportCount(currentFilters())
     const outputCount = noLimit.value ? count : Math.min(count, expLimit.value)
     const warnings: string[] = []
-    if (noLimit.value) {
-      warnings.push(`${count} 件全件をエクスポートします。`)
-    } else if (count > expLimit.value) {
-      warnings.push(`${count} 件中直近 ${expLimit.value} 件をエクスポートします。`)
-    }
-    if (expDetailLevel.value === 'actions' && outputCount > 50) {
-      warnings.push('アクション詳細を含むためファイルサイズが大きくなる可能性があります。')
+    if (inclMatches.value) {
+      if (noLimit.value) {
+        warnings.push(`${count} 件全件をエクスポートします。`)
+      } else if (count > expLimit.value) {
+        warnings.push(`${count} 件中直近 ${expLimit.value} 件をエクスポートします。`)
+      }
+      if (inclActions.value && outputCount > 50) {
+        warnings.push('アクション詳細を含むためファイルサイズが大きくなる可能性があります。')
+      }
     }
     if (warnings.length > 0) {
       confirmMessage.value = warnings.join(' ') + ' 続けますか？'
@@ -156,10 +183,15 @@ async function doDownload() {
   try {
     const markdown = await fetchExportMarkdown({
       ...currentFilters(),
-      detail_level: expDetailLevel.value,
+      include_summary: inclSummary.value,
+      include_deck_stats: inclDeckStats.value,
+      include_card_stats: inclCardStats.value,
+      include_deck_list: inclDeckList.value,
+      include_matches: inclMatches.value,
+      include_actions: inclActions.value,
       limit: expLimit.value,
       no_limit: noLimit.value || undefined,
-    } as any)
+    })
     const blob = new Blob([markdown], { type: 'text/plain; charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -190,7 +222,6 @@ onMounted(async () => {
 <style scoped>
 .ai-export {
   padding: 24px;
-
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -212,6 +243,11 @@ onMounted(async () => {
   gap: 10px;
 }
 
+.ai-export__section--disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 .ai-export__count-section {
   font-size: 13px;
   color: #7a6a55;
@@ -222,10 +258,6 @@ onMounted(async () => {
   color: #2c2416;
 }
 
-.ai-export__section--fixed {
-  min-height: 116px;
-}
-
 .ai-export__section-label {
   font-size: 11px;
   font-weight: bold;
@@ -234,20 +266,10 @@ onMounted(async () => {
   padding-bottom: 4px;
 }
 
-
-.ai-export__radios {
+.ai-export__checks {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.ai-export__radio {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: #2c2416;
-  cursor: pointer;
 }
 
 .ai-export__limit-row {
@@ -276,6 +298,15 @@ onMounted(async () => {
   user-select: none;
 }
 
+.ai-export__checkbox-label--disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.ai-export__sub-indent {
+  padding-left: 8px;
+}
+
 .ai-export__checkbox {
   width: 14px;
   height: 14px;
@@ -283,6 +314,10 @@ onMounted(async () => {
   cursor: pointer;
 }
 
+.ai-export__label {
+  font-size: 13px;
+  color: #2c2416;
+}
 
 .ai-export__footer {
   display: flex;

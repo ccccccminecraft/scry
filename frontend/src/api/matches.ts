@@ -90,10 +90,13 @@ export async function fetchActionLog(matchId: string, gameId: number): Promise<A
   return res.data
 }
 
-export type ExportDetailLevel = 'summary' | 'matches' | 'actions'
-
 export interface ExportParams extends MatchFilters {
-  detail_level: ExportDetailLevel
+  include_summary?: boolean
+  include_deck_stats?: boolean
+  include_card_stats?: boolean
+  include_deck_list?: boolean
+  include_matches?: boolean
+  include_actions?: boolean
   limit: number
   no_limit?: boolean
 }
