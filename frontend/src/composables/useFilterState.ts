@@ -207,5 +207,6 @@ export function useFilterState() {
     // アクション
     init,
     resetFilters,
+    refreshLists: _loadAllLists,
   }
 }

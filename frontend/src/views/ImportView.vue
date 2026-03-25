@@ -295,9 +295,11 @@ import {
 import { fetchSettings, updateSettings } from '../api/settings'
 import { fetchLatestMatchDate } from '../api/matches'
 import { useToast } from '../composables/useToast'
+import { useFilterState } from '../composables/useFilterState'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 
 const { showError, showSuccess } = useToast()
+const { refreshLists } = useFilterState()
 
 // 確認ダイアログ
 const confirmVisible = ref(false)
@@ -653,6 +655,7 @@ async function runSurveilImport(targets: Array<{ path: string; name: string }>) 
 
   batchResult.value = { imported, skipped, cancelled, errors, results }
   state.value = 'batch_result'
+  refreshLists()
 }
 
 // ── 手動インポート ───────────────────────────────────────────────────────
@@ -821,6 +824,7 @@ async function runImport(targets: Array<{ path: string; name: string }>) {
 
   batchResult.value = { imported, skipped, cancelled, errors, results }
   state.value = 'batch_result'
+  refreshLists()
 }
 
 function formatDate(iso: string): string {
