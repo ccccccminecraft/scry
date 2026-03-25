@@ -100,12 +100,6 @@
               </div>
               <div class="onboarding-field__hint">例: C:\Users\[名前]\AppData\Local\Apps\2.0</div>
             </div>
-            <div class="onboarding-field">
-              <label class="onboarding-toggle">
-                <input type="checkbox" v-model="mtgoAutoImport" />
-                自動インポートを有効にする
-              </label>
-            </div>
           </template>
 
           <!-- MTGA セクション -->
@@ -129,13 +123,16 @@
               </div>
               <div class="onboarding-field__hint">例: C:\Program Files\Wizards of the Coast\MTGA</div>
             </div>
-            <div class="onboarding-field">
-              <label class="onboarding-toggle">
-                <input type="checkbox" v-model="mtgaAutoImport" />
-                自動インポートを有効にする
-              </label>
-            </div>
           </template>
+
+          <!-- 自動インポート（共通） -->
+          <div class="onboarding-field" style="margin-top: 8px; border-top: 1px solid #f0ece0; padding-top: 14px;">
+            <label class="onboarding-toggle">
+              <input type="checkbox" v-model="autoImport" />
+              自動インポートを有効にする
+            </label>
+            <div class="onboarding-field__hint">選択したゲームのフォルダを定期的にスキャンし、新しい試合を自動で取り込みます。</div>
+          </div>
 
           <p class="onboarding-card__sub">フォルダは後から「設定」→「インポート」画面でも変更できます。</p>
         </div>
@@ -200,7 +197,7 @@
             </div>
             <div class="onboarding-summary__item">
               <span class="onboarding-summary__label">自動インポート</span>
-              <span class="onboarding-summary__value">{{ (mtgoAutoImport || mtgaAutoImport) ? '有効' : '無効' }}</span>
+              <span class="onboarding-summary__value">{{ autoImport ? '有効' : '無効' }}</span>
             </div>
             <div class="onboarding-summary__item">
               <span class="onboarding-summary__label">AI 分析</span>
@@ -243,10 +240,9 @@ const selectedGames = ref<Set<'mtgo' | 'mtga'>>(new Set())
 
 // Step 2
 const mtgoFolder = ref<string | null>(null)
-const mtgoAutoImport = ref(false)
 const surveilFolder = ref<string | null>(null)
 const mtgaFolder = ref<string | null>(null)
-const mtgaAutoImport = ref(false)
+const autoImport = ref(false)
 
 // Step 3
 const apiKey = ref('')
@@ -303,10 +299,9 @@ async function selectMtgaFolder() {
 async function complete() {
   saving.value = true
   try {
-    const autoImport = mtgoAutoImport.value || mtgaAutoImport.value
     await updateSettings({
       quick_import_folder: mtgoFolder.value,
-      auto_import_enabled: autoImport,
+      auto_import_enabled: autoImport.value,
       ...(apiKey.value ? { api_key: apiKey.value } : {}),
       onboarding_completed: true,
     })
