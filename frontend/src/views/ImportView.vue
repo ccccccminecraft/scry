@@ -162,8 +162,8 @@
         <p class="hint">ヒント: C:\Users\[ユーザー名]\AppData\Local\Apps\2.0</p>
       </div>
 
-      <!-- インポートオプション -->
-      <div class="import-options">
+      <!-- インポートオプション（Scryfall API 有効時のみ表示） -->
+      <div v-if="scryfallEnabled" class="import-options">
         <label class="import-options__item">
           <input type="checkbox" v-model="skipFormatInference" />
           <span>Scryfall でのフォーマット自動推定をスキップする</span>
@@ -378,6 +378,7 @@ const errorResults = computed(() =>
 )
 
 const skipFormatInference = ref(false)
+const scryfallEnabled = ref(false)
 
 const checkedCount = computed(() => scanFiles.value.filter(f => f.checked).length)
 const allChecked = computed(() => scanFiles.value.length > 0 && checkedCount.value === scanFiles.value.length)
@@ -390,6 +391,7 @@ onMounted(async () => {
       getSurveilFolder(),
     ])
     quickFolder.value = settings.quick_import_folder
+    scryfallEnabled.value = settings.scryfall_enabled ?? false
     latestDate.value = latest
     surveilFolder.value = surveilFolderRes.folder
     if (surveilFolderRes.folder) {
