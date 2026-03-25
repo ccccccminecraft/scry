@@ -4,6 +4,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from database import Base
 
 
+
 class MtgaCard(Base):
     """MTGA grpId（arena_id）→ カード名のキャッシュ。"""
     __tablename__ = "mtga_cards"
@@ -48,6 +49,15 @@ class CardCache(Base):
     produced_mana: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON 配列文字列
     card_faces: Mapped[str | None] = mapped_column(Text, nullable=True)     # JSON 配列文字列
     fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class CardCacheMiss(Base):
+    """Scryfall で解決できなかったカード名の記録。fetch-missing でスキップするために使用。"""
+    __tablename__ = "card_cache_miss"
+
+    name: Mapped[str] = mapped_column(Text, primary_key=True)
+    failed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    miss_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
 class CardLegality(Base):

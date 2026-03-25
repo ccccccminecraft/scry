@@ -109,7 +109,8 @@ export async function fetchExportCount(filters: MatchFilters): Promise<number> {
 export interface CardDictionaryCount {
   total: number
   cached: number
-  missing: number
+  fetchable: number
+  miss: number
 }
 
 export async function fetchCardDictionaryCount(filters: MatchFilters): Promise<CardDictionaryCount> {
@@ -122,6 +123,30 @@ export async function fetchCardDictionary(filters: MatchFilters): Promise<string
     params: filters,
     responseType: 'text',
   })
+  return res.data
+}
+
+export interface FetchMissingResult {
+  fetched: number
+  failed: number
+  failed_names: string[]
+}
+
+export async function fetchMissingCardData(filters: MatchFilters): Promise<FetchMissingResult> {
+  const res = await client.post<FetchMissingResult>(
+    '/api/matches/export/card-dictionary/fetch-missing',
+    {},
+    { params: filters, timeout: 300_000 },
+  )
+  return res.data
+}
+
+export async function resetCardCacheMiss(filters: MatchFilters): Promise<{ deleted: number }> {
+  const res = await client.post<{ deleted: number }>(
+    '/api/matches/export/card-dictionary/reset-miss',
+    {},
+    { params: filters },
+  )
   return res.data
 }
 

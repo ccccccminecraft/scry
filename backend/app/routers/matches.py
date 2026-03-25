@@ -473,6 +473,24 @@ def _build_export_markdown(
     return "\n".join(lines)
 
 
+def _get_cached_action_names(card_names: list[str], db: Session) -> set[str]:
+    """card_names のうち card_cache に登録済みのものを返す（DFC 面名マッチング含む）。"""
+    from models.cache import CardCache
+
+    exact = {r[0] for r in db.query(CardCache.name).filter(CardCache.name.in_(card_names)).all()}
+    unmatched = [n for n in card_names if n not in exact]
+    dfc_matched: set[str] = set()
+    if unmatched:
+        dfc_entries = {
+            r[0] for r in db.query(CardCache.name).filter(CardCache.name.contains(" // ")).all()
+        }
+        for name in unmatched:
+            prefix = name + " //"
+            if any(e.startswith(prefix) for e in dfc_entries):
+                dfc_matched.add(name)
+    return exact | dfc_matched
+
+
 @router.get("/matches/export/card-dictionary/count")
 def card_dictionary_count(
     player: str = Query(...),
@@ -488,11 +506,11 @@ def card_dictionary_count(
 ):
     """カード辞書エクスポート対象のユニークカード数を返す。"""
     from app.routers.stats import _build_match_id_list
-    from models.cache import CardCache
+    from models.cache import CardCacheMiss
 
     match_ids = _build_match_id_list(db, player, opponent, deck_ids, opponent_decks, format, date_from, date_to, decks, version_id)
     if not match_ids:
-        return {"total": 0, "cached": 0, "missing": 0}
+        return {"total": 0, "cached": 0, "fetchable": 0, "miss": 0}
 
     rows = (
         db.query(Action.card_name)
@@ -503,11 +521,137 @@ def card_dictionary_count(
     )
     card_names = [r[0] for r in rows]
     total = len(card_names)
-    cached_names = {
-        r[0] for r in db.query(CardCache.name).filter(CardCache.name.in_(card_names)).all()
+    cached_names = _get_cached_action_names(card_names, db)
+    miss_names = {
+        r[0] for r in db.query(CardCacheMiss.name).filter(CardCacheMiss.name.in_(card_names)).all()
     }
+    # cached と miss が重複する場合は cached 優先
+    miss_names -= cached_names
     cached = len(cached_names)
-    return {"total": total, "cached": cached, "missing": total - cached}
+    miss = len(miss_names)
+    fetchable = total - cached - miss
+    return {"total": total, "cached": cached, "fetchable": fetchable, "miss": miss}
+
+
+@router.post("/matches/export/card-dictionary/fetch-missing")
+async def fetch_missing_card_data(
+    player: str = Query(...),
+    opponent: str | None = Query(default=None),
+    deck_ids: list[int] = Query(default=[]),
+    decks: list[str] = Query(default=[]),
+    version_id: int | None = Query(default=None),
+    opponent_decks: list[str] = Query(default=[]),
+    format: str | None = Query(default=None),
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """フィルター内の未取得カード名を Scryfall から一括取得して card_cache に保存する。"""
+    import asyncio
+    from datetime import datetime as dt, timezone
+    from app.routers.stats import _build_match_id_list
+    from models.cache import CardCache, CardCacheMiss
+    from services.scryfall_settings import is_scryfall_enabled
+    from services.card_image_service import _resolve_by_name, _extract_card_cache_fields
+
+    if not is_scryfall_enabled(db):
+        raise HTTPException(status_code=403, detail="Scryfall が無効です")
+
+    match_ids = _build_match_id_list(db, player, opponent, deck_ids, opponent_decks, format, date_from, date_to, decks, version_id)
+    if not match_ids:
+        return {"fetched": 0, "failed": 0, "failed_names": []}
+
+    rows = (
+        db.query(Action.card_name)
+        .join(Game, Game.id == Action.game_id)
+        .filter(Game.match_id.in_(match_ids), Action.card_name.isnot(None))
+        .distinct()
+        .all()
+    )
+    card_names = [r[0] for r in rows]
+
+    cached_names = _get_cached_action_names(card_names, db)
+    miss_names = {
+        r[0] for r in db.query(CardCacheMiss.name).filter(CardCacheMiss.name.in_(card_names)).all()
+    }
+    target_names = [n for n in card_names if n not in cached_names and n not in miss_names]
+
+    fetched = 0
+    failed_names: list[str] = []
+    now = dt.now(timezone.utc)
+
+    for name in target_names:
+        try:
+            result = await _resolve_by_name(name)
+        except Exception:
+            result = None
+
+        if result and result.get("scryfall_id"):
+            scryfall_id = result["scryfall_id"]
+            if not db.get(CardCache, scryfall_id):
+                fields = _extract_card_cache_fields(result["_raw"])
+                db.add(CardCache(scryfall_id=scryfall_id, fetched_at=now, **fields))
+            # miss 登録済みなら削除
+            existing_miss = db.get(CardCacheMiss, name)
+            if existing_miss:
+                db.delete(existing_miss)
+            db.commit()
+            fetched += 1
+        else:
+            # 404 等の確定的失敗 → miss に記録
+            existing_miss = db.get(CardCacheMiss, name)
+            if existing_miss:
+                existing_miss.failed_at = now
+                existing_miss.miss_count += 1
+            else:
+                db.add(CardCacheMiss(name=name, failed_at=now, miss_count=1))
+            db.commit()
+            failed_names.append(name)
+
+        await asyncio.sleep(0.05)
+
+    return {"fetched": fetched, "failed": len(failed_names), "failed_names": failed_names}
+
+
+@router.post("/matches/export/card-dictionary/reset-miss")
+def reset_card_cache_miss(
+    player: str = Query(...),
+    opponent: str | None = Query(default=None),
+    deck_ids: list[int] = Query(default=[]),
+    decks: list[str] = Query(default=[]),
+    version_id: int | None = Query(default=None),
+    opponent_decks: list[str] = Query(default=[]),
+    format: str | None = Query(default=None),
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """フィルター内のカード名に該当する card_cache_miss エントリを削除する。"""
+    from app.routers.stats import _build_match_id_list
+    from models.cache import CardCacheMiss
+
+    match_ids = _build_match_id_list(db, player, opponent, deck_ids, opponent_decks, format, date_from, date_to, decks, version_id)
+    if not match_ids:
+        return {"deleted": 0}
+
+    rows = (
+        db.query(Action.card_name)
+        .join(Game, Game.id == Action.game_id)
+        .filter(Game.match_id.in_(match_ids), Action.card_name.isnot(None))
+        .distinct()
+        .all()
+    )
+    card_names = [r[0] for r in rows]
+    if not card_names:
+        return {"deleted": 0}
+
+    deleted = (
+        db.query(CardCacheMiss)
+        .filter(CardCacheMiss.name.in_(card_names))
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return {"deleted": deleted}
 
 
 @router.get("/matches/export/card-dictionary")

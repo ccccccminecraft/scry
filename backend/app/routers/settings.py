@@ -181,3 +181,20 @@ def delete_api_key(db: Session = Depends(get_db)):
     if s:
         db.delete(s)
         db.commit()
+
+
+@router.get("/settings/card-cache-miss/count")
+def get_card_cache_miss_count(db: Session = Depends(get_db)):
+    """card_cache_miss テーブルの全件数を返す。"""
+    from models.cache import CardCacheMiss
+    count = db.query(CardCacheMiss).count()
+    return {"count": count}
+
+
+@router.delete("/settings/card-cache-miss")
+def delete_all_card_cache_miss(db: Session = Depends(get_db)):
+    """card_cache_miss テーブルを全件削除する。"""
+    from models.cache import CardCacheMiss
+    deleted = db.query(CardCacheMiss).delete(synchronize_session=False)
+    db.commit()
+    return {"deleted": deleted}

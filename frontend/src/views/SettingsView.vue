@@ -61,6 +61,20 @@
     </div>
 
     <div class="settings__section">
+      <div class="settings__section-title">カード辞書</div>
+      <div class="settings__row">
+        <span class="settings__inline-label" style="width: auto;">失敗リスト:</span>
+        <span class="settings__note" style="margin-top: 0;">{{ cardCacheMissCount !== null ? `${cardCacheMissCount}件` : '—' }}</span>
+        <button
+          class="settings__btn settings__btn--danger"
+          :disabled="cardCacheMissCount === 0 || deletingMiss"
+          @click="handleDeleteAllMiss"
+        >{{ deletingMiss ? '削除中…' : 'すべてリセット' }}</button>
+      </div>
+      <p class="settings__note">Scryfall で取得できなかったカード名（トークン等）の記録です。新セットリリース後など、再取得を試みたい場合にリセットしてください。</p>
+    </div>
+
+    <div class="settings__section">
       <div class="settings__section-title">Scryfall API</div>
       <div class="settings__row">
         <label class="settings__toggle-label">
@@ -242,7 +256,7 @@
 import { ref, inject, onMounted, type Ref } from 'vue'
 import axios from 'axios'
 import { useToast } from '../composables/useToast'
-import { fetchSettings, updateSettings, deleteApiKey, fetchAutoImportStatus, type AutoImportStatus } from '../api/settings'
+import { fetchSettings, updateSettings, deleteApiKey, fetchAutoImportStatus, fetchCardCacheMissCount, deleteAllCardCacheMiss, type AutoImportStatus } from '../api/settings'
 import { fetchPlayers } from '../api/stats'
 import { downloadBackup, restoreBackup } from '../api/backup'
 import { deleteAllMatches, deleteMatchesByRange, resetDatabase } from '../api/deletion'
@@ -287,6 +301,8 @@ const autoImportEnabled = ref(false)
 const autoImportIntervalInput = ref(30)
 const autoImportStatus = ref<AutoImportStatus | null>(null)
 const scryfallEnabled = ref(false)
+const cardCacheMissCount = ref<number | null>(null)
+const deletingMiss = ref(false)
 const defaultDateFilterInput = ref('none')
 const defaultDateFilterFromInput = ref('')
 const toggleConfirmVisible = ref(false)
@@ -295,12 +311,13 @@ const pendingToggle = ref<(() => Promise<void>) | null>(null)
 
 onMounted(async () => {
   try {
-    const [s, players, health, mtgaStatus, aiStatus] = await Promise.all([
+    const [s, players, health, mtgaStatus, aiStatus, missCount] = await Promise.all([
       fetchSettings(),
       fetchPlayers(),
       axios.get('http://localhost:18432/api/health').catch(() => null),
       getMtgaSyncStatus().catch(() => null),
       fetchAutoImportStatus().catch(() => null),
+      fetchCardCacheMissCount().catch(() => null),
     ])
     configured.value = s.api_key_configured
     playerList.value = players
@@ -312,6 +329,7 @@ onMounted(async () => {
     autoImportIntervalInput.value = s.auto_import_interval_sec ?? 30
     autoImportStatus.value = aiStatus
     scryfallEnabled.value = s.scryfall_enabled ?? false
+    cardCacheMissCount.value = missCount ?? 0
     defaultDateFilterInput.value = s.default_date_filter ?? 'none'
     defaultDateFilterFromInput.value = s.default_date_filter_from ?? ''
     if (mtgaStatus?.folder) {
@@ -545,6 +563,20 @@ async function saveAutoImport() {
     showSuccess('自動インポート設定を保存しました')
   } catch {
     showError('保存に失敗しました')
+  }
+}
+
+async function handleDeleteAllMiss() {
+  if (!cardCacheMissCount.value) return
+  deletingMiss.value = true
+  try {
+    const deleted = await deleteAllCardCacheMiss()
+    cardCacheMissCount.value = 0
+    showSuccess(`失敗リストを${deleted}件削除しました`)
+  } catch {
+    showError('削除に失敗しました')
+  } finally {
+    deletingMiss.value = false
   }
 }
 

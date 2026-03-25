@@ -55,3 +55,13 @@ export async function updateSettings(body: {
 export async function deleteApiKey(): Promise<void> {
   await client.delete('/api/settings/api-key')
 }
+
+export async function fetchCardCacheMissCount(): Promise<number> {
+  const res = await client.get<{ count: number }>('/api/settings/card-cache-miss/count')
+  return res.data.count
+}
+
+export async function deleteAllCardCacheMiss(): Promise<number> {
+  const res = await client.delete<{ deleted: number }>('/api/settings/card-cache-miss')
+  return res.data.deleted
+}

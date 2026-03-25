@@ -94,9 +94,30 @@
         <span class="ai-export__count-num">
           {{ cardCount !== null ? `${cardCount.total} 種類` : '—' }}
         </span>
-        <span v-if="cardCount && cardCount.missing > 0" class="ai-export__count-missing">
-          （うちデータ未取得: {{ cardCount.missing }} 種類）
+        <span v-if="cardCount && (cardCount.fetchable + cardCount.miss) > 0" class="ai-export__count-missing">
+          （うちデータ未取得: {{ cardCount.fetchable + cardCount.miss }} 種類）
         </span>
+        <span v-if="cardCount && cardCount.miss > 0" class="ai-export__count-miss-detail">
+          （取得可能: {{ cardCount.fetchable }} 種類 / 既知の失敗: {{ cardCount.miss }} 種類）
+        </span>
+      </div>
+
+      <!-- fetch / reset ボタン行 -->
+      <div v-if="cardCount && (cardCount.fetchable > 0 || cardCount.miss > 0)" class="ai-export__section">
+        <div class="ai-export__action-row">
+          <button
+            v-if="cardCount.fetchable > 0"
+            class="ai-export__btn ai-export__btn--primary"
+            :disabled="!player || fetching || resettingMiss"
+            @click="runFetchMissing"
+          >{{ fetching ? '取得中…' : `未取得カードを取得 (${cardCount.fetchable}件)` }}</button>
+          <button
+            v-if="cardCount.miss > 0"
+            class="ai-export__btn"
+            :disabled="!player || fetching || resettingMiss"
+            @click="runResetMiss"
+          >{{ resettingMiss ? 'リセット中…' : `失敗リストをリセット (${cardCount.miss}件)` }}</button>
+        </div>
       </div>
 
       <!-- ダウンロードボタン -->
@@ -124,6 +145,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import {
   fetchExportCount, fetchExportMarkdown,
   fetchCardDictionaryCount, fetchCardDictionary,
+  fetchMissingCardData, resetCardCacheMiss,
   type CardDictionaryCount,
 } from '../api/matches'
 import { useToast } from '../composables/useToast'
@@ -131,7 +153,7 @@ import { useFilterState } from '../composables/useFilterState'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import FilterBar from '../components/FilterBar.vue'
 
-const { showError } = useToast()
+const { showError, showSuccess } = useToast()
 const {
   deckIds, decks, versionId, opponentDecks, dateFrom, dateTo,
   player, opponent, format,
@@ -193,6 +215,8 @@ watch([inclSummary, inclDeckStats, inclCardStats, inclDeckList, inclMatches, inc
 // ── カード辞書タブ ────────────────────────────────────────────────────────
 const cardCount = ref<CardDictionaryCount | null>(null)
 const cardDownloading = ref(false)
+const fetching = ref(false)
+const resettingMiss = ref(false)
 
 // ── 共通: フィルター ──────────────────────────────────────────────────────
 function currentFilters() {
@@ -286,6 +310,38 @@ async function doDownload() {
     showError(e instanceof Error ? e.message : 'ダウンロードに失敗しました')
   } finally {
     downloading.value = false
+  }
+}
+
+// ── カード辞書: 未取得補完 ────────────────────────────────────────────────
+async function runFetchMissing() {
+  if (!player.value || fetching.value) return
+  fetching.value = true
+  try {
+    const result = await fetchMissingCardData(currentFilters())
+    const msg = result.failed > 0
+      ? `${result.fetched}件取得しました（失敗: ${result.failed}件 → 失敗リストに追加）`
+      : `${result.fetched}件取得しました`
+    showSuccess(msg)
+    await loadCardCount()
+  } catch (e) {
+    showError(e instanceof Error ? e.message : 'カードデータの取得に失敗しました')
+  } finally {
+    fetching.value = false
+  }
+}
+
+async function runResetMiss() {
+  if (!player.value || resettingMiss.value) return
+  resettingMiss.value = true
+  try {
+    const result = await resetCardCacheMiss(currentFilters())
+    showSuccess(`失敗リストを${result.deleted}件リセットしました`)
+    await loadCardCount()
+  } catch (e) {
+    showError(e instanceof Error ? e.message : '失敗リストのリセットに失敗しました')
+  } finally {
+    resettingMiss.value = false
   }
 }
 
@@ -401,6 +457,19 @@ onMounted(async () => {
   margin-left: 6px;
   font-size: 12px;
   color: #a07040;
+}
+
+.ai-export__count-miss-detail {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: #a07040;
+}
+
+.ai-export__action-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .ai-export__section-label {
