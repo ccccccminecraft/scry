@@ -4,7 +4,7 @@
     <div v-if="showPlayer" class="filter-bar__item">
       <div class="filter-bar__label">プレイヤー</div>
       <button
-        class="filter-bar__btn"
+        class="filter-bar__btn filter-bar__btn--player"
         :class="{ 'filter-bar__btn--active': !!player }"
         @click="open('player')"
       >{{ player || 'すべて' }} ▾</button>
@@ -14,7 +14,7 @@
     <div class="filter-bar__item">
       <div class="filter-bar__label">フォーマット</div>
       <button
-        class="filter-bar__btn"
+        class="filter-bar__btn filter-bar__btn--format"
         :class="{ 'filter-bar__btn--active': !!format }"
         @click="open('format')"
       >{{ format || 'すべて' }} ▾</button>
@@ -24,7 +24,7 @@
     <div class="filter-bar__item">
       <div class="filter-bar__label">対戦相手</div>
       <button
-        class="filter-bar__btn"
+        class="filter-bar__btn filter-bar__btn--opponent"
         :class="{ 'filter-bar__btn--active': !!opponent }"
         @click="open('opponent')"
       >{{ opponent || 'すべて' }} ▾</button>
@@ -34,7 +34,7 @@
     <div class="filter-bar__item">
       <div class="filter-bar__label">使用デッキ</div>
       <button
-        class="filter-bar__btn"
+        class="filter-bar__btn filter-bar__btn--deck"
         :class="{ 'filter-bar__btn--active': !!(deckId || deck) }"
         @click="open('deck')"
       >{{ deckLabel }} ▾</button>
@@ -44,7 +44,7 @@
     <div class="filter-bar__item">
       <div class="filter-bar__label">バージョン</div>
       <button
-        class="filter-bar__btn"
+        class="filter-bar__btn filter-bar__btn--version"
         :class="{ 'filter-bar__btn--active': !!versionId, 'filter-bar__btn--disabled': !deckId }"
         :disabled="!deckId"
         @click="open('version')"
@@ -55,7 +55,7 @@
     <div class="filter-bar__item">
       <div class="filter-bar__label">相手デッキ</div>
       <button
-        class="filter-bar__btn"
+        class="filter-bar__btn filter-bar__btn--opponent-deck"
         :class="{ 'filter-bar__btn--active': !!opponentDeck }"
         @click="open('opponentDeck')"
       >{{ opponentDeck || 'すべて' }} ▾</button>
@@ -65,7 +65,7 @@
     <div class="filter-bar__item">
       <div class="filter-bar__label">対戦期間</div>
       <button
-        class="filter-bar__btn"
+        class="filter-bar__btn filter-bar__btn--date"
         :class="{ 'filter-bar__btn--active': !!(dateFrom || dateTo) }"
         @click="open('date')"
       >{{ dateLabel }} ▾</button>
@@ -221,10 +221,21 @@ const dateLabel = computed(() => {
   cursor: pointer;
   text-align: left;
   white-space: nowrap;
-  max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
+  box-sizing: border-box;
 }
+
+.filter-bar__btn--player,
+.filter-bar__btn--opponent,
+.filter-bar__btn--deck,
+.filter-bar__btn--opponent-deck { width: 130px; }
+
+.filter-bar__btn--format { width: 90px; }
+
+.filter-bar__btn--version { width: 110px; }
+
+.filter-bar__btn--date { width: 170px; }
 .filter-bar__btn:hover { background: #faf7f0; }
 
 .filter-bar__btn--active {
