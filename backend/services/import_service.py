@@ -416,13 +416,23 @@ class SurveilImportService:
             match = self._db.get(Match, match_id)
             match.format = fmt
 
-            # self プレイヤーのデッキ名を検出（deck_main の全カードを使用）
-            used_cards = set(parsed["deck_main"].keys())
+            # アクション記録からプレイヤーごとの使用カードを収集（相手デッキ検出用）
+            player_cards: dict[str, set[str]] = {}
+            for game_dict in parsed["games"]:
+                for act in game_dict["actions"]:
+                    if act["action_type"] in ("play", "cast") and act["card_name"]:
+                        player_cards.setdefault(act["player"], set()).add(act["card_name"])
+
+            # self: deck_main（全カード）を使用、opponent: アクション記録を使用
+            self_cards = set(parsed["deck_main"].keys())
             for mp in match.players:
                 if mp.player_name == parsed["self_player"]:
-                    refined = _detect_deck(self._db, mp.player_name, used_cards, fmt)
-                    if refined is not None:
-                        mp.deck_name = refined
+                    cards = self_cards
+                else:
+                    cards = player_cards.get(mp.player_name, set())
+                refined = _detect_deck(self._db, mp.player_name, cards, fmt)
+                if refined is not None:
+                    mp.deck_name = refined
 
             self._db.commit()
         except Exception as e:
@@ -531,12 +541,23 @@ class SurveilImportService:
             match = self._db.get(Match, match_id)
             match.format = fmt
 
-            used_cards = set(parsed["deck_main"].keys())
+            # アクション記録からプレイヤーごとの使用カードを収集（相手デッキ検出用）
+            player_cards: dict[str, set[str]] = {}
+            for game_dict in parsed["games"]:
+                for act in game_dict["actions"]:
+                    if act["action_type"] in ("play", "cast") and act["card_name"]:
+                        player_cards.setdefault(act["player"], set()).add(act["card_name"])
+
+            # self: deck_main（全カード）を使用、opponent: アクション記録を使用
+            self_cards = set(parsed["deck_main"].keys())
             for mp in match.players:
                 if mp.player_name == parsed["self_player"]:
-                    refined = _detect_deck(self._db, mp.player_name, used_cards, fmt)
-                    if refined is not None:
-                        mp.deck_name = refined
+                    cards = self_cards
+                else:
+                    cards = player_cards.get(mp.player_name, set())
+                refined = _detect_deck(self._db, mp.player_name, cards, fmt)
+                if refined is not None:
+                    mp.deck_name = refined
 
             # デッキ自動同期: EventSetDeckV2 のデッキ名が取得できている場合のみ
             deck_name = gre_result.get("deck_name")
