@@ -139,7 +139,7 @@ import FilterBar from '../components/FilterBar.vue'
 const { showError } = useToast()
 const {
   playerModel,
-  deckId, deck, versionId, opponentDeck, dateFrom, dateTo,
+  deckIds, decks, versionId, opponentDecks, dateFrom, dateTo,
   player, opponent, format,
   playerList,
   init,
@@ -252,8 +252,8 @@ async function selectSession(id: number) {
     const detail = await fetchSessionDetail(id)
     messages.value = detail.messages.map(m => ({ role: m.role, content: m.content }))
     opponent.value = detail.filter_opponent ?? ''
-    deck.value = detail.filter_deck ?? ''
-    opponentDeck.value = detail.filter_opponent_deck ?? ''
+    decks.value = detail.filter_deck ? [detail.filter_deck] : []
+    opponentDecks.value = detail.filter_opponent_deck ? [detail.filter_opponent_deck] : []
     format.value = detail.filter_format ?? ''
     dateFrom.value = detail.filter_date_from ?? ''
     dateTo.value = detail.filter_date_to ?? ''
@@ -297,10 +297,10 @@ async function sendMessage(text: string, isGreeting = false) {
       message: text,
       history: history.length > 0 ? history : undefined,
       opponent: opponent.value || null,
-      deck: deckId.value ? null : (deck.value || null),
-      deck_id: !versionId.value ? (deckId.value ?? null) : null,
-      version_id: versionId.value ?? null,
-      opponent_deck: opponentDeck.value || null,
+      deck: deckIds.value.length > 0 ? null : (decks.value[0] ?? null),
+      deck_id: (deckIds.value.length === 1 && !versionId.value) ? deckIds.value[0] : null,
+      version_id: (deckIds.value.length === 1 && versionId.value) ? versionId.value : null,
+      opponent_deck: opponentDecks.value[0] ?? null,
       format: format.value || null,
       date_from: dateFrom.value || null,
       date_to: dateTo.value || null,

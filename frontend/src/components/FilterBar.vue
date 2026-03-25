@@ -35,7 +35,7 @@
       <div class="filter-bar__label">使用デッキ</div>
       <button
         class="filter-bar__btn filter-bar__btn--deck"
-        :class="{ 'filter-bar__btn--active': !!(deckId || deck) }"
+        :class="{ 'filter-bar__btn--active': deckIds.length > 0 || decks.length > 0 }"
         @click="open('deck')"
       >{{ deckLabel }} ▾</button>
     </div>
@@ -45,8 +45,8 @@
       <div class="filter-bar__label">バージョン</div>
       <button
         class="filter-bar__btn filter-bar__btn--version"
-        :class="{ 'filter-bar__btn--active': !!versionId, 'filter-bar__btn--disabled': !deckId }"
-        :disabled="!deckId"
+        :class="{ 'filter-bar__btn--active': !!versionId && deckIds.length === 1, 'filter-bar__btn--disabled': !deckIds.length }"
+        :disabled="!deckIds.length"
         @click="open('version')"
       >{{ versionLabel }} ▾</button>
     </div>
@@ -56,9 +56,9 @@
       <div class="filter-bar__label">相手デッキ</div>
       <button
         class="filter-bar__btn filter-bar__btn--opponent-deck"
-        :class="{ 'filter-bar__btn--active': !!opponentDeck }"
+        :class="{ 'filter-bar__btn--active': opponentDecks.length > 0 }"
         @click="open('opponentDeck')"
-      >{{ opponentDeck || 'すべて' }} ▾</button>
+      >{{ opponentDeckLabel }} ▾</button>
     </div>
 
     <!-- 対戦期間 -->
@@ -114,8 +114,9 @@
     v-if="activeFilter === 'opponentDeck'"
     title="相手デッキを選択"
     :items="opponentDeckList.map(d => ({ value: d, label: d }))"
-    :model-value="opponentDeck"
-    @update:model-value="v => { opponentDeck = String(v ?? '') }"
+    :multiple="true"
+    :multiple-values="opponentDecks"
+    @update:multiple-values="v => { opponentDecks = v }"
     @close="activeFilter = null"
   />
 
@@ -124,10 +125,10 @@
     v-if="activeFilter === 'deck'"
     :deck-list="deckList"
     :deck-name-list="deckNameList"
-    :deck-id="deckId"
-    :deck="deck"
-    @select-deck-id="id => { deckId = id }"
-    @select-deck="name => { deck = name }"
+    :deck-ids="deckIds"
+    :decks="decks"
+    @update:deck-ids="ids => { deckIds = ids }"
+    @update:decks="names => { decks = names }"
     @close="activeFilter = null"
   />
 
@@ -153,7 +154,7 @@ withDefaults(defineProps<{ showPlayer?: boolean }>(), { showPlayer: true })
 
 const {
   playerModel, opponentModel, formatModel,
-  deckId, deck, versionId, opponentDeck, dateFrom, dateTo,
+  deckIds, decks, versionId, opponentDecks, dateFrom, dateTo,
   player, opponent, format,
   playerList, opponentList, deckList, deckNameList, versionList, opponentDeckList, formatList,
   resetFilters,
@@ -167,16 +168,27 @@ function open(f: ActiveFilter) {
 }
 
 const deckLabel = computed(() => {
-  if (deckId.value) {
-    return deckList.value.find(d => d.id === deckId.value)?.name ?? 'すべて'
+  const total = deckIds.value.length + decks.value.length
+  if (total === 0) return 'すべて'
+  if (total === 1) {
+    if (deckIds.value.length === 1) {
+      return deckList.value.find(d => d.id === deckIds.value[0])?.name ?? 'すべて'
+    }
+    return decks.value[0]
   }
-  return deck.value || 'すべて'
+  return `${total}件選択`
 })
 
 const versionLabel = computed(() => {
-  if (!versionId.value) return 'すべて'
+  if (!versionId.value || deckIds.value.length !== 1) return 'すべて'
   const v = versionList.value.find(v => v.id === versionId.value)
   return v ? `v${v.version_number}${v.memo ? ' ' + v.memo : ''}` : 'すべて'
+})
+
+const opponentDeckLabel = computed(() => {
+  if (opponentDecks.value.length === 0) return 'すべて'
+  if (opponentDecks.value.length === 1) return opponentDecks.value[0]
+  return `${opponentDecks.value.length}件選択`
 })
 
 const dateLabel = computed(() => {

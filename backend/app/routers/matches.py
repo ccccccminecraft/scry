@@ -39,10 +39,10 @@ def list_matches(
     offset: int = Query(default=0, ge=0),
     player: str | None = Query(default=None),
     opponent: str | None = Query(default=None),
-    deck_id: int | None = Query(default=None),
-    deck: str | None = Query(default=None),
+    deck_ids: list[int] = Query(default=[]),
+    decks: list[str] = Query(default=[]),
     version_id: int | None = Query(default=None),
-    opponent_deck: str | None = Query(default=None),
+    opponent_decks: list[str] = Query(default=[]),
     format: str | None = Query(default=None),
     date_from: str | None = Query(default=None, description="YYYY-MM-DD"),
     date_to: str | None = Query(default=None, description="YYYY-MM-DD"),
@@ -66,7 +66,7 @@ def list_matches(
         )
         q = q.filter(Match.id.in_(opp_sub))
 
-    if version_id:
+    if version_id and len(deck_ids) == 1:
         ver_sub = (
             db.query(MatchPlayer.match_id)
             .filter(
@@ -76,30 +76,30 @@ def list_matches(
             .subquery()
         )
         q = q.filter(Match.id.in_(ver_sub))
-    elif deck_id:
+    elif deck_ids:
         deck_sub = (
             db.query(MatchPlayer.match_id)
             .join(DeckVersion, DeckVersion.id == MatchPlayer.deck_version_id)
             .filter(
                 MatchPlayer.player_name == player,
-                DeckVersion.deck_id == deck_id,
+                DeckVersion.deck_id.in_(deck_ids),
             )
             .subquery()
         )
         q = q.filter(Match.id.in_(deck_sub))
-    elif deck:
+    elif decks:
         deck_sub = (
             db.query(MatchPlayer.match_id)
             .filter(
                 MatchPlayer.player_name == player,
-                MatchPlayer.deck_name == deck,
+                MatchPlayer.deck_name.in_(decks),
             )
             .subquery()
         )
         q = q.filter(Match.id.in_(deck_sub))
 
-    if opponent_deck:
-        opp_deck_filter = [MatchPlayer.deck_name == opponent_deck]
+    if opponent_decks:
+        opp_deck_filter = [MatchPlayer.deck_name.in_(opponent_decks)]
         if player:
             opp_deck_filter.append(MatchPlayer.player_name != player)
         opp_deck_sub = (
@@ -169,10 +169,10 @@ def _export_filter_params():
 def export_count(
     player: str = Query(...),
     opponent: str | None = Query(default=None),
-    deck_id: int | None = Query(default=None),
-    deck: str | None = Query(default=None),
+    deck_ids: list[int] = Query(default=[]),
+    decks: list[str] = Query(default=[]),
     version_id: int | None = Query(default=None),
-    opponent_deck: str | None = Query(default=None),
+    opponent_decks: list[str] = Query(default=[]),
     format: str | None = Query(default=None),
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
@@ -180,7 +180,7 @@ def export_count(
 ):
     """エクスポート対象マッチ数を返す。"""
     from app.routers.stats import _build_match_id_list
-    match_ids = _build_match_id_list(db, player, opponent, deck_id, opponent_deck, format, date_from, date_to, deck, version_id)
+    match_ids = _build_match_id_list(db, player, opponent, deck_ids, opponent_decks, format, date_from, date_to, decks, version_id)
     return {"count": len(match_ids)}
 
 
@@ -188,10 +188,10 @@ def export_count(
 def export_matches(
     player: str = Query(...),
     opponent: str | None = Query(default=None),
-    deck_id: int | None = Query(default=None),
-    deck: str | None = Query(default=None),
+    deck_ids: list[int] = Query(default=[]),
+    decks: list[str] = Query(default=[]),
     version_id: int | None = Query(default=None),
-    opponent_deck: str | None = Query(default=None),
+    opponent_decks: list[str] = Query(default=[]),
     format: str | None = Query(default=None),
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
@@ -203,16 +203,19 @@ def export_matches(
     """対戦データを Markdown 形式でエクスポートする。"""
     from app.routers.stats import _build_match_id_list, _calc_deck_stats
 
-    match_ids = _build_match_id_list(db, player, opponent, deck_id, opponent_deck, format, date_from, date_to, deck, version_id)
-    deck_name = (db.get(Deck, deck_id).name if deck_id and db.get(Deck, deck_id) else None) or deck
+    match_ids = _build_match_id_list(db, player, opponent, deck_ids, opponent_decks, format, date_from, date_to, decks, version_id)
+    # デッキ表示名（Markdownヘッダー用）: deck_ids の名前 + decks をまとめる
+    deck_id_names = [db.get(Deck, did).name for did in deck_ids if db.get(Deck, did)]
+    deck_label = "、".join(deck_id_names + list(decks)) or None
     effective_limit = None if no_limit else limit
     effective_version_id = version_id
-    if not effective_version_id and deck_id:
-        latest = db.query(DeckVersion).filter(DeckVersion.deck_id == deck_id).order_by(DeckVersion.version_number.desc()).first()
+    if not effective_version_id and len(deck_ids) == 1:
+        latest = db.query(DeckVersion).filter(DeckVersion.deck_id == deck_ids[0]).order_by(DeckVersion.version_number.desc()).first()
         if latest:
             effective_version_id = latest.id
+    opponent_deck_label = "、".join(opponent_decks) or None
     markdown = _build_export_markdown(player, db, match_ids, detail_level, effective_limit,
-                                      opponent, deck_name, opponent_deck, format, date_from, date_to,
+                                      opponent, deck_label, opponent_deck_label, format, date_from, date_to,
                                       version_id=effective_version_id)
 
     from datetime import datetime as dt

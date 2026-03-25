@@ -16,25 +16,57 @@
         />
       </div>
       <div class="fsm__list">
-        <button
-          class="fsm__item"
-          :class="{ 'fsm__item--selected': modelValue === null || modelValue === '' }"
-          @click="select(null)"
-        >
-          <span class="fsm__check">{{ (modelValue === null || modelValue === '') ? '✓' : '' }}</span>
-          すべて
-        </button>
-        <button
-          v-for="item in filtered"
-          :key="item.value ?? ''"
-          class="fsm__item"
-          :class="{ 'fsm__item--selected': item.value === modelValue }"
-          @click="select(item.value)"
-        >
-          <span class="fsm__check">{{ item.value === modelValue ? '✓' : '' }}</span>
-          {{ item.label }}
-        </button>
+        <!-- シングルモード -->
+        <template v-if="!multiple">
+          <button
+            class="fsm__item"
+            :class="{ 'fsm__item--selected': modelValue === null || modelValue === '' }"
+            @click="select(null)"
+          >
+            <span class="fsm__check">{{ (modelValue === null || modelValue === '') ? '✓' : '' }}</span>
+            すべて
+          </button>
+          <button
+            v-for="item in filtered"
+            :key="item.value ?? ''"
+            class="fsm__item"
+            :class="{ 'fsm__item--selected': item.value === modelValue }"
+            @click="select(item.value)"
+          >
+            <span class="fsm__check">{{ item.value === modelValue ? '✓' : '' }}</span>
+            {{ item.label }}
+          </button>
+        </template>
+
+        <!-- マルチモード -->
+        <template v-else>
+          <button
+            class="fsm__item"
+            :class="{ 'fsm__item--selected': localValues.length === 0 }"
+            @click="selectAllMulti"
+          >
+            <span class="fsm__check">{{ localValues.length === 0 ? '✓' : '' }}</span>
+            すべて
+          </button>
+          <button
+            v-for="item in filtered"
+            :key="item.value ?? ''"
+            class="fsm__item"
+            :class="{ 'fsm__item--selected': localValues.includes(item.value as string) }"
+            @click="toggleMulti(item.value as string)"
+          >
+            <span class="fsm__check">{{ localValues.includes(item.value as string) ? '✓' : '' }}</span>
+            {{ item.label }}
+          </button>
+        </template>
+
         <div v-if="filtered.length === 0" class="fsm__empty">該当なし</div>
+      </div>
+
+      <!-- マルチモード時のフッター -->
+      <div v-if="multiple" class="fsm__footer">
+        <button class="fsm__footer-btn fsm__footer-btn--clear" @click="clearMulti">クリア</button>
+        <button class="fsm__footer-btn fsm__footer-btn--confirm" @click="confirmMulti">確定</button>
       </div>
     </div>
   </div>
@@ -51,16 +83,20 @@ interface Item {
 const props = defineProps<{
   title: string
   items: Item[]
-  modelValue: string | number | null
+  modelValue?: string | number | null
+  multipleValues?: string[]
+  multiple?: boolean
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: string | number | null]
+  'update:multipleValues': [values: string[]]
   'close': []
 }>()
 
 const query = ref('')
 const searchInput = ref<HTMLInputElement | null>(null)
+const localValues = ref<string[]>(props.multipleValues ? [...props.multipleValues] : [])
 
 const filtered = computed(() => {
   if (!query.value) return props.items
@@ -70,6 +106,29 @@ const filtered = computed(() => {
 
 function select(value: string | number | null) {
   emit('update:modelValue', value)
+  emit('close')
+}
+
+function selectAllMulti() {
+  emit('update:multipleValues', [])
+  emit('close')
+}
+
+function toggleMulti(value: string) {
+  const idx = localValues.value.indexOf(value)
+  if (idx === -1) {
+    localValues.value = [...localValues.value, value]
+  } else {
+    localValues.value = localValues.value.filter(v => v !== value)
+  }
+}
+
+function clearMulti() {
+  localValues.value = []
+}
+
+function confirmMulti() {
+  emit('update:multipleValues', localValues.value)
   emit('close')
 }
 
@@ -147,7 +206,9 @@ onMounted(() => {
 
 .fsm__list {
   overflow-y: auto;
-  padding: 4px 0 8px;
+  padding: 4px 0 4px;
+  flex: 1;
+  min-height: 0;
 }
 
 .fsm__item {
@@ -180,4 +241,35 @@ onMounted(() => {
   font-size: 12px;
   color: #b0a090;
 }
+
+.fsm__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid #e0d8c8;
+  flex-shrink: 0;
+}
+
+.fsm__footer-btn {
+  padding: 5px 14px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.fsm__footer-btn--clear {
+  border: 1px solid #c8b89a;
+  background: #faf7f0;
+  color: #7a6a55;
+}
+.fsm__footer-btn--clear:hover { background: #f0ece0; }
+
+.fsm__footer-btn--confirm {
+  border: 1px solid #4a6fa5;
+  background: #4a6fa5;
+  color: #fff;
+}
+.fsm__footer-btn--confirm:hover { background: #3a5f95; }
 </style>

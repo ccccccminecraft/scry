@@ -77,7 +77,7 @@ import FilterBar from '../components/FilterBar.vue'
 
 const { showError } = useToast()
 const {
-  deckId, deck, versionId, opponentDeck, dateFrom, dateTo,
+  deckIds, decks, versionId, opponentDecks, dateFrom, dateTo,
   player, opponent, format,
   init,
 } = useFilterState()
@@ -97,16 +97,21 @@ async function loadCount() {
   } catch { /* ignore */ }
 }
 
-watch([player, opponent, deckId, deck, versionId, opponentDeck, format, dateFrom, dateTo], loadCount)
+watch([player, opponent, deckIds, decks, versionId, opponentDecks, format, dateFrom, dateTo], loadCount, { deep: true })
 
 function currentFilters() {
+  const hasSingleDeck = deckIds.value.length === 1 && decks.value.length === 0
   return {
     player: player.value,
     opponent: opponent.value || undefined,
-    deck_id: !versionId.value ? (deckId.value ?? undefined) : undefined,
-    deck: deckId.value ? undefined : (deck.value || undefined),
-    version_id: versionId.value ?? undefined,
-    opponent_deck: opponentDeck.value || undefined,
+    ...(hasSingleDeck && versionId.value
+      ? { version_id: versionId.value }
+      : deckIds.value.length > 0
+        ? { deck_ids: deckIds.value }
+        : decks.value.length > 0
+          ? { decks: decks.value }
+          : {}),
+    opponent_decks: opponentDecks.value.length > 0 ? opponentDecks.value : undefined,
     format: format.value || undefined,
     date_from: dateFrom.value || undefined,
     date_to: dateTo.value || undefined,

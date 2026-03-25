@@ -21,9 +21,9 @@ function _saveToStorage() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       format: format.value,
       opponent: opponent.value,
-      deckId: deckId.value,
-      deck: deck.value,
-      opponentDeck: opponentDeck.value,
+      deckIds: deckIds.value,
+      decks: decks.value,
+      opponentDecks: opponentDecks.value,
     }))
   } catch { /* ignore */ }
 }
@@ -33,9 +33,9 @@ const _saved = _loadFromStorage()
 
 const player = ref('')
 const opponent = ref(typeof _saved.opponent === 'string' ? _saved.opponent : '')
-const deckId = ref<number | null>(typeof _saved.deckId === 'number' ? _saved.deckId : null)
-const deck = ref(typeof _saved.deck === 'string' ? _saved.deck : '')
-const opponentDeck = ref(typeof _saved.opponentDeck === 'string' ? _saved.opponentDeck : '')
+const deckIds = ref<number[]>(Array.isArray(_saved.deckIds) ? (_saved.deckIds as number[]).filter(v => typeof v === 'number') : [])
+const decks = ref<string[]>(Array.isArray(_saved.decks) ? (_saved.decks as string[]).filter(v => typeof v === 'string') : [])
+const opponentDecks = ref<string[]>(Array.isArray(_saved.opponentDecks) ? (_saved.opponentDecks as string[]).filter(v => typeof v === 'string') : [])
 const format = ref(typeof _saved.format === 'string' ? _saved.format : '')
 const dateFrom = ref('')
 const dateTo = ref('')
@@ -51,16 +51,16 @@ const formatList = ref<string[]>([])
 const versionId = ref<number | null>(null)
 
 // フィルター変更時に localStorage へ保存
-watch([format, opponent, deckId, deck, opponentDeck], _saveToStorage)
+watch([format, opponent, deckIds, decks, opponentDecks], _saveToStorage, { deep: true })
 
-// デッキ選択変更時にバージョン一覧を再取得
-watch(deckId, async (newId) => {
+// デッキ選択変更時にバージョン一覧を再取得（単一選択時のみ）
+watch(deckIds, async (newIds) => {
   versionId.value = null
-  if (newId === null) { versionList.value = []; return }
+  if (newIds.length !== 1) { versionList.value = []; return }
   try {
-    versionList.value = await fetchVersions(newId)
+    versionList.value = await fetchVersions(newIds[0])
   } catch { versionList.value = [] }
-})
+}, { deep: true })
 
 // フォーマットの表示順
 const FORMAT_ORDER = ['standard', 'pioneer', 'modern', 'pauper', 'legacy', 'vintage', 'unknown']
@@ -151,9 +151,9 @@ export function useFilterState() {
     set: (p: string) => {
       player.value = p
       opponent.value = ''
-      deckId.value = null
-      deck.value = ''
-      opponentDeck.value = ''
+      deckIds.value = []
+      decks.value = []
+      opponentDecks.value = []
       _loadAllLists()
     },
   })
@@ -162,7 +162,7 @@ export function useFilterState() {
     get: () => opponent.value,
     set: (o: string) => {
       opponent.value = o
-      opponentDeck.value = ''
+      opponentDecks.value = []
       _loadOpponentDeckList()
     },
   })
@@ -171,9 +171,9 @@ export function useFilterState() {
     get: () => format.value,
     set: (f: string) => {
       format.value = f
-      deckId.value = null
-      deck.value = ''
-      opponentDeck.value = ''
+      deckIds.value = []
+      decks.value = []
+      opponentDecks.value = []
       _loadDeckAndOpponentDeckList()
     },
   })
@@ -198,10 +198,8 @@ export function useFilterState() {
           settings.default_date_filter_from ?? null,
         )
       }
-      // 保存済み deckId がリストに存在しなければクリア
-      if (deckId.value !== null && !deckList.value.find(d => d.id === deckId.value)) {
-        deckId.value = null
-      }
+      // 保存済み deckIds のうちリストに存在しないものを除外
+      deckIds.value = deckIds.value.filter(id => deckList.value.some(d => d.id === id))
 
       if (!player.value && players.length > 0) {
         const preferred = settings.default_player
@@ -214,10 +212,10 @@ export function useFilterState() {
 
   function resetFilters() {
     opponent.value = ''
-    deckId.value = null
-    deck.value = ''
+    deckIds.value = []
+    decks.value = []
     versionId.value = null
-    opponentDeck.value = ''
+    opponentDecks.value = []
     format.value = ''
     dateFrom.value = ''
     dateTo.value = ''
@@ -231,10 +229,10 @@ export function useFilterState() {
     opponentModel,
     formatModel,
     // 直接 v-model 可能な ref
-    deckId,
-    deck,
+    deckIds,
+    decks,
     versionId,
-    opponentDeck,
+    opponentDecks,
     dateFrom,
     dateTo,
     // API 呼び出し用の読み取り ref

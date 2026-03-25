@@ -155,7 +155,7 @@ import FilterBar from '../components/FilterBar.vue'
 
 const { showError } = useToast()
 const {
-  deckId, deck, versionId, opponentDeck, dateFrom, dateTo,
+  deckIds, decks, versionId, opponentDecks, dateFrom, dateTo,
   player, opponent, format,
   playerList, deckList,
   minDeckMatches,
@@ -163,8 +163,8 @@ const {
 } = useFilterState()
 
 const selectedDeckTile = computed(() => {
-  if (!deckId.value) return null
-  const d = deckList.value.find(d => d.id === deckId.value)
+  if (deckIds.value.length !== 1) return null
+  const d = deckList.value.find(d => d.id === deckIds.value[0])
   return d?.tile_scryfall_id ? cardImageUrl(d.tile_scryfall_id, 'normal') : null
 })
 
@@ -234,16 +234,22 @@ async function loadAll() {
   await Promise.all([loadStats(), loadCardStats(), loadOpponentCardStats()])
 }
 
+function _deckFilters() {
+  const hasSingleDeck = deckIds.value.length === 1 && decks.value.length === 0
+  if (hasSingleDeck && versionId.value) return { version_id: versionId.value }
+  if (deckIds.value.length > 0) return { deck_ids: deckIds.value }
+  if (decks.value.length > 0) return { decks: decks.value }
+  return {}
+}
+
 async function loadStats() {
   if (!player.value) return
   try {
     stats.value = await fetchStats({
       player: player.value,
       opponent: opponent.value || undefined,
-      deck_id: !versionId.value ? (deckId.value ?? undefined) : undefined,
-      deck: deckId.value ? undefined : (deck.value || undefined),
-      version_id: versionId.value ?? undefined,
-      opponent_deck: opponentDeck.value || undefined,
+      ..._deckFilters(),
+      opponent_decks: opponentDecks.value.length > 0 ? opponentDecks.value : undefined,
       format: format.value || undefined,
       date_from: dateFrom.value || undefined,
       date_to: dateTo.value || undefined,
@@ -255,19 +261,13 @@ async function loadStats() {
   }
 }
 
-function _deckFilters() {
-  if (versionId.value) return { version_id: versionId.value }
-  if (deckId.value) return { deck_id: deckId.value }
-  return { deck: deck.value || undefined }
-}
-
 async function loadCardStats() {
   if (!player.value) return
   const filters = {
     player: player.value,
     opponent: opponent.value || undefined,
     ..._deckFilters(),
-    opponent_deck: opponentDeck.value || undefined,
+    opponent_decks: opponentDecks.value.length > 0 ? opponentDecks.value : undefined,
     format: format.value || undefined,
     date_from: dateFrom.value || undefined,
     date_to: dateTo.value || undefined,
@@ -285,7 +285,7 @@ async function loadOpponentCardStats() {
     player: player.value,
     opponent: opponent.value || undefined,
     ..._deckFilters(),
-    opponent_deck: opponentDeck.value || undefined,
+    opponent_decks: opponentDecks.value.length > 0 ? opponentDecks.value : undefined,
     format: format.value || undefined,
     date_from: dateFrom.value || undefined,
     date_to: dateTo.value || undefined,
@@ -298,8 +298,9 @@ async function loadOpponentCardStats() {
 }
 
 watch(
-  [player, opponent, deckId, deck, versionId, opponentDeck, format, dateFrom, dateTo],
+  [player, opponent, deckIds, decks, versionId, opponentDecks, format, dateFrom, dateTo],
   loadAll,
+  { deep: true },
 )
 
 async function activate() {
