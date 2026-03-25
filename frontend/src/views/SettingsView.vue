@@ -43,7 +43,7 @@
       <div class="settings__section-title">Scryfall API</div>
       <div class="settings__row">
         <label class="settings__toggle-label">
-          <input type="checkbox" v-model="scryfallEnabled" @change="saveScryfallEnabled" />
+          <input type="checkbox" :checked="scryfallEnabled" @click.prevent="confirmScryfallToggle" />
           Scryfall API を利用する
         </label>
       </div>
@@ -60,7 +60,7 @@
       <div class="settings__section-title">自動インポート</div>
       <div class="settings__row">
         <label class="settings__toggle-label">
-          <input type="checkbox" v-model="autoImportEnabled" @change="saveAutoImport" />
+          <input type="checkbox" :checked="autoImportEnabled" @click.prevent="confirmAutoImportToggle" />
           自動インポートを有効にする
         </label>
       </div>
@@ -184,6 +184,14 @@
     </div>
 
     <ConfirmDialog
+      :visible="toggleConfirmVisible"
+      :message="toggleConfirmMessage"
+      confirm-label="変更する"
+      @confirm="onConfirmToggle"
+      @cancel="toggleConfirmVisible = false"
+    />
+
+    <ConfirmDialog
       :visible="confirmVisible"
       :message="confirmMessage"
       confirm-label="削除"
@@ -259,6 +267,9 @@ const autoImportEnabled = ref(false)
 const autoImportIntervalInput = ref(30)
 const autoImportStatus = ref<AutoImportStatus | null>(null)
 const scryfallEnabled = ref(false)
+const toggleConfirmVisible = ref(false)
+const toggleConfirmMessage = ref('')
+const pendingToggle = ref<(() => Promise<void>) | null>(null)
 
 onMounted(async () => {
   try {
@@ -446,12 +457,45 @@ async function handleSyncMtgaCards() {
 }
 
 
-async function saveScryfallEnabled() {
+function confirmScryfallToggle() {
+  const newValue = !scryfallEnabled.value
+  toggleConfirmMessage.value = newValue
+    ? 'Scryfall API を有効にします。カード画像の取得やフォーマット自動推定で外部通信が発生します。よろしいですか？'
+    : 'Scryfall API を無効にします。カード画像の取得やフォーマット自動推定が行われなくなります。よろしいですか？'
+  pendingToggle.value = async () => {
+    scryfallEnabled.value = newValue
+    await updateSettings({ scryfall_enabled: newValue })
+    showSuccess(newValue ? 'Scryfall API を有効にしました' : 'Scryfall API を無効にしました')
+  }
+  toggleConfirmVisible.value = true
+}
+
+function confirmAutoImportToggle() {
+  const newValue = !autoImportEnabled.value
+  toggleConfirmMessage.value = newValue
+    ? '自動インポートを有効にします。設定済みフォルダを定期的にスキャンし、新しい試合を自動で取り込みます。よろしいですか？'
+    : '自動インポートを無効にします。よろしいですか？'
+  pendingToggle.value = async () => {
+    autoImportEnabled.value = newValue
+    await updateSettings({
+      auto_import_enabled: newValue,
+      auto_import_interval_sec: Math.max(10, autoImportIntervalInput.value),
+    })
+    autoImportStatus.value = await fetchAutoImportStatus().catch(() => null)
+    showSuccess(newValue ? '自動インポートを有効にしました' : '自動インポートを無効にしました')
+  }
+  toggleConfirmVisible.value = true
+}
+
+async function onConfirmToggle() {
+  toggleConfirmVisible.value = false
+  if (!pendingToggle.value) return
   try {
-    await updateSettings({ scryfall_enabled: scryfallEnabled.value })
-    showSuccess(scryfallEnabled.value ? 'Scryfall API を有効にしました' : 'Scryfall API を無効にしました')
+    await pendingToggle.value()
   } catch {
     showError('保存に失敗しました')
+  } finally {
+    pendingToggle.value = null
   }
 }
 
