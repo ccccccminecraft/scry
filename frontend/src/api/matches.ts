@@ -132,13 +132,61 @@ export interface FetchMissingResult {
   failed_names: string[]
 }
 
-export async function fetchMissingCardData(filters: MatchFilters): Promise<FetchMissingResult> {
-  const res = await client.post<FetchMissingResult>(
-    '/api/matches/export/card-dictionary/fetch-missing',
-    {},
-    { params: filters, timeout: 300_000 },
-  )
-  return res.data
+function _buildSearchParams(filters: MatchFilters): URLSearchParams {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value === undefined || value === null) continue
+    if (Array.isArray(value)) {
+      for (const v of value) params.append(key, String(v))
+    } else {
+      params.append(key, String(value))
+    }
+  }
+  return params
+}
+
+export function streamFetchMissingCardData(
+  filters: MatchFilters,
+  onProgress: (done: number, total: number, fetched: number, failed: number) => void,
+): Promise<FetchMissingResult> {
+  const params = _buildSearchParams(filters)
+  const url = `http://localhost:18432/api/matches/export/card-dictionary/fetch-missing?${params}`
+
+  return new Promise(async (resolve, reject) => {
+    try {
+      const response = await fetch(url, { method: 'POST' })
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        reject(new Error(body.detail || `HTTP error ${response.status}`))
+        return
+      }
+
+      const reader = response.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        // SSE イベントは "\n\n" で区切られる
+        const parts = buffer.split('\n\n')
+        buffer = parts.pop() ?? ''
+        for (const part of parts) {
+          for (const line of part.split('\n')) {
+            if (!line.startsWith('data: ')) continue
+            const data = JSON.parse(line.slice(6))
+            onProgress(data.done, data.total, data.fetched, data.failed)
+            if (data.complete) {
+              resolve({ fetched: data.fetched, failed: data.failed, failed_names: data.failed_names })
+            }
+          }
+        }
+      }
+    } catch (e) {
+      reject(e instanceof Error ? e : new Error(String(e)))
+    }
+  })
 }
 
 export async function resetCardCacheMiss(filters: MatchFilters): Promise<{ deleted: number }> {

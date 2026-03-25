@@ -118,6 +118,15 @@
             @click="runResetMiss"
           >{{ resettingMiss ? 'リセット中…' : `失敗リストをリセット (${cardCount.miss}件)` }}</button>
         </div>
+        <div v-if="fetching && fetchProgress.total > 0" class="ai-export__progress">
+          <div class="ai-export__progress-bar">
+            <div
+              class="ai-export__progress-fill"
+              :style="{ width: `${Math.round((fetchProgress.done / fetchProgress.total) * 100)}%` }"
+            ></div>
+          </div>
+          <span class="ai-export__progress-text">{{ fetchProgress.done }} / {{ fetchProgress.total }}件</span>
+        </div>
       </div>
 
       <!-- ダウンロードボタン -->
@@ -145,7 +154,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import {
   fetchExportCount, fetchExportMarkdown,
   fetchCardDictionaryCount, fetchCardDictionary,
-  fetchMissingCardData, resetCardCacheMiss,
+  streamFetchMissingCardData, resetCardCacheMiss,
   type CardDictionaryCount,
 } from '../api/matches'
 import { useToast } from '../composables/useToast'
@@ -217,6 +226,7 @@ const cardCount = ref<CardDictionaryCount | null>(null)
 const cardDownloading = ref(false)
 const fetching = ref(false)
 const resettingMiss = ref(false)
+const fetchProgress = ref({ done: 0, total: 0 })
 
 // ── 共通: フィルター ──────────────────────────────────────────────────────
 function currentFilters() {
@@ -317,8 +327,12 @@ async function doDownload() {
 async function runFetchMissing() {
   if (!player.value || fetching.value) return
   fetching.value = true
+  fetchProgress.value = { done: 0, total: cardCount.value?.fetchable ?? 0 }
   try {
-    const result = await fetchMissingCardData(currentFilters())
+    const result = await streamFetchMissingCardData(
+      currentFilters(),
+      (done, total) => { fetchProgress.value = { done, total } },
+    )
     const msg = result.failed > 0
       ? `${result.fetched}件取得しました（失敗: ${result.failed}件 → 失敗リストに追加）`
       : `${result.fetched}件取得しました`
@@ -557,5 +571,33 @@ onMounted(async () => {
 .ai-export__btn:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+.ai-export__progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.ai-export__progress-bar {
+  flex: 1;
+  height: 8px;
+  background: #e8e0d0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ai-export__progress-fill {
+  height: 100%;
+  background: #4a6fa5;
+  border-radius: 4px;
+  transition: width 0.2s ease;
+}
+
+.ai-export__progress-text {
+  font-size: 12px;
+  color: #6b5e4e;
+  white-space: nowrap;
 }
 </style>

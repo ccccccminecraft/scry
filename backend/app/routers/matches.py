@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -546,8 +546,9 @@ async def fetch_missing_card_data(
     date_to: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    """フィルター内の未取得カード名を Scryfall から一括取得して card_cache に保存する。"""
+    """フィルター内の未取得カード名を Scryfall から一括取得して card_cache に保存する。進捗を SSE でストリーミングする。"""
     import asyncio
+    import json as _json
     from datetime import datetime as dt, timezone
     from app.routers.stats import _build_match_id_list
     from models.cache import CardCache, CardCacheMiss
@@ -558,59 +559,72 @@ async def fetch_missing_card_data(
         raise HTTPException(status_code=403, detail="Scryfall が無効です")
 
     match_ids = _build_match_id_list(db, player, opponent, deck_ids, opponent_decks, format, date_from, date_to, decks, version_id)
-    if not match_ids:
-        return {"fetched": 0, "failed": 0, "failed_names": []}
 
-    rows = (
-        db.query(Action.card_name)
-        .join(Game, Game.id == Action.game_id)
-        .filter(Game.match_id.in_(match_ids), Action.card_name.isnot(None))
-        .distinct()
-        .all()
-    )
-    card_names = [r[0] for r in rows]
+    target_names: list[str] = []
+    if match_ids:
+        rows = (
+            db.query(Action.card_name)
+            .join(Game, Game.id == Action.game_id)
+            .filter(Game.match_id.in_(match_ids), Action.card_name.isnot(None))
+            .distinct()
+            .all()
+        )
+        card_names = [r[0] for r in rows]
+        cached_names = _get_cached_action_names(card_names, db)
+        miss_names = {
+            r[0] for r in db.query(CardCacheMiss.name).filter(CardCacheMiss.name.in_(card_names)).all()
+        }
+        target_names = [n for n in card_names if n not in cached_names and n not in miss_names]
 
-    cached_names = _get_cached_action_names(card_names, db)
-    miss_names = {
-        r[0] for r in db.query(CardCacheMiss.name).filter(CardCacheMiss.name.in_(card_names)).all()
-    }
-    target_names = [n for n in card_names if n not in cached_names and n not in miss_names]
+    total = len(target_names)
 
-    fetched = 0
-    failed_names: list[str] = []
-    now = dt.now(timezone.utc)
+    async def event_generator():
+        fetched = 0
+        failed_names: list[str] = []
+        now = dt.now(timezone.utc)
 
-    for name in target_names:
-        try:
-            result = await _resolve_by_name(name)
-        except Exception:
-            result = None
+        if total == 0:
+            yield f"data: {_json.dumps({'done': 0, 'total': 0, 'fetched': 0, 'failed': 0, 'failed_names': [], 'complete': True})}\n\n"
+            return
 
-        if result and result.get("scryfall_id"):
-            scryfall_id = result["scryfall_id"]
-            if not db.get(CardCache, scryfall_id):
-                fields = _extract_card_cache_fields(result["_raw"])
-                db.add(CardCache(scryfall_id=scryfall_id, fetched_at=now, **fields))
-            # miss 登録済みなら削除
-            existing_miss = db.get(CardCacheMiss, name)
-            if existing_miss:
-                db.delete(existing_miss)
-            db.commit()
-            fetched += 1
-        else:
-            # 404 等の確定的失敗 → miss に記録
-            existing_miss = db.get(CardCacheMiss, name)
-            if existing_miss:
-                existing_miss.failed_at = now
-                existing_miss.miss_count += 1
+        for i, name in enumerate(target_names):
+            try:
+                result = await _resolve_by_name(name)
+            except Exception:
+                result = None
+
+            if result and result.get("scryfall_id"):
+                scryfall_id = result["scryfall_id"]
+                if not db.get(CardCache, scryfall_id):
+                    fields = _extract_card_cache_fields(result["_raw"])
+                    db.add(CardCache(scryfall_id=scryfall_id, fetched_at=now, **fields))
+                existing_miss = db.get(CardCacheMiss, name)
+                if existing_miss:
+                    db.delete(existing_miss)
+                db.commit()
+                fetched += 1
             else:
-                db.add(CardCacheMiss(name=name, failed_at=now, miss_count=1))
-            db.commit()
-            failed_names.append(name)
+                existing_miss = db.get(CardCacheMiss, name)
+                if existing_miss:
+                    existing_miss.failed_at = now
+                    existing_miss.miss_count += 1
+                else:
+                    db.add(CardCacheMiss(name=name, failed_at=now, miss_count=1))
+                db.commit()
+                failed_names.append(name)
 
-        await asyncio.sleep(0.05)
+            done = i + 1
+            is_last = done == total
+            event: dict = {"done": done, "total": total, "fetched": fetched, "failed": len(failed_names)}
+            if is_last:
+                event["complete"] = True
+                event["failed_names"] = failed_names
+            yield f"data: {_json.dumps(event)}\n\n"
 
-    return {"fetched": fetched, "failed": len(failed_names), "failed_names": failed_names}
+            if not is_last:
+                await asyncio.sleep(0.05)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @router.post("/matches/export/card-dictionary/reset-miss")
