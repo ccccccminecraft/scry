@@ -249,6 +249,7 @@ class ImportService:
                     card_name=card_name,
                     target_name=act["target_name"],
                     sequence=act["sequence"],
+                    life_total=act.get("life_total"),
                 ))
 
             self._db.flush()
@@ -502,6 +503,7 @@ class SurveilImportService:
                     card_name=act["card_name"],
                     target_name=act["target_name"],
                     sequence=act["sequence"],
+                    life_total=act.get("life_total"),
                 ))
 
             self._db.flush()
@@ -650,6 +652,7 @@ class SurveilImportService:
                     card_name=card_name,
                     target_name=target_name,
                     sequence=act["seq"],
+                    life_total=act.get("life_total"),
                 ))
             games.append(SurveilGame(
                 game_number=game["game_number"],

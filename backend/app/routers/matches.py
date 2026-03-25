@@ -460,13 +460,14 @@ def _build_export_markdown(
                     lines += [
                         f"#### Game {g.game_number} アクション詳細",
                         "",
-                        "| ターン | プレイヤー | 種別 | カード | 対象 |",
-                        "|--------|-----------|------|--------|------|",
+                        "| ターン | プレイヤー | 種別 | カード | 対象 | ライフ |",
+                        "|--------|-----------|------|--------|------|--------|",
                     ]
                     for a in actions:
+                        life_str = str(a.life_total) if a.life_total is not None else "—"
                         lines.append(
                             f"| {a.turn} | {a.player_name} | {a.action_type}"
-                            f" | {a.card_name or '—'} | {a.target_name or '—'} |"
+                            f" | {a.card_name or '—'} | {a.target_name or '—'} | {life_str} |"
                         )
                     lines.append("")
 
@@ -994,6 +995,7 @@ def get_actions(match_id: str, game_id: int, db: Session = Depends(get_db)):
                 "card_name": a.card_name,
                 "target_name": a.target_name,
                 "sequence": a.sequence,
+                "life_total": a.life_total,
             }
             for a in actions
         ],

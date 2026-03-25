@@ -111,6 +111,9 @@ def init_db() -> None:
             if "phase" not in cols:
                 conn.execute(text("ALTER TABLE actions ADD COLUMN phase TEXT"))
                 conn.commit()
+            if "life_total" not in cols:
+                conn.execute(text("ALTER TABLE actions ADD COLUMN life_total INTEGER"))
+                conn.commit()
 
         # analysis_sessions: フィルター列の追加
         if "analysis_sessions" in inspector.get_table_names():

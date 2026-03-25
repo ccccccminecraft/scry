@@ -52,6 +52,7 @@ export interface ActionEntry {
   card_name: string | null
   target_name: string | null
   sequence: number
+  life_total: number | null
 }
 
 export interface ActionLogResponse {

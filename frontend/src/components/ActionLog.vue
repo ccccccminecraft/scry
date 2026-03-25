@@ -5,11 +5,19 @@
         ターン {{ group.turn }}
         <span class="action-log__turn-player">{{ group.activePlayer }}</span>
       </div>
-      <div v-for="a in group.actions" :key="a.sequence" class="action-log__row">
+      <div
+        v-for="a in group.actions"
+        :key="a.sequence"
+        class="action-log__row"
+        :class="{ 'action-log__row--life': a.action_type === 'life_change' }"
+      >
         <span class="action-log__player">{{ a.player }}</span>
         <span class="action-log__type">{{ ACTION_LABELS[a.action_type] ?? a.action_type }}</span>
         <span v-if="a.card_name" class="action-log__card">{{ a.card_name }}</span>
         <span v-if="a.target_name" class="action-log__target">→ {{ a.target_name }}</span>
+        <span v-if="a.life_total !== null && a.life_total !== undefined" class="action-log__life">
+          ♥ {{ a.life_total }}
+        </span>
         <span v-if="a.phase" class="action-log__phase">{{ PHASE_LABELS[a.phase] ?? a.phase }}</span>
       </div>
     </template>
@@ -23,6 +31,7 @@ import type { ActionEntry } from '../api/matches'
 const props = defineProps<{ actions: ActionEntry[] }>()
 
 const ACTION_LABELS: Record<string, string> = {
+  life_change:    'ライフ変動',
   play:           '土地プレイ',
   cast:           '唱える',
   activate:       '能力起動',
@@ -126,5 +135,19 @@ const groupedByTurnPlayer = computed(() => {
   font-size: 11px;
   color: #b0a090;
   white-space: nowrap;
+}
+
+.action-log__row--life {
+  background: #fdf5f5;
+}
+
+.action-log__row--life:hover {
+  background: #faeaea;
+}
+
+.action-log__life {
+  color: #c0392b;
+  font-weight: 500;
+  font-size: 12px;
 }
 </style>

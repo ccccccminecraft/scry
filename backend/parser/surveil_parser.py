@@ -21,7 +21,7 @@ _BASIC_LANDS = frozenset({
 _SKIP_EVENTS = frozenset({
     "turn_start", "phase_change",
     "ability_mana", "ability_resolved",
-    "resolve", "life_change",
+    "resolve",
 })
 
 # event_type → action_type
@@ -37,6 +37,7 @@ _EVENT_TO_ACTION: dict[str, str] = {
     "ability_triggered": "trigger",
     "mill":              "mill",
     "damage":            "damage",
+    "life_change":       "life_change",
 }
 
 
@@ -53,6 +54,7 @@ class SurveilGameAction(TypedDict):
     card_name: str | None
     target_name: str | None
     sequence: int
+    life_total: int | None  # life_change アクションのみ: 変動後の絶対値
 
 
 class SurveilGame(TypedDict):
@@ -135,6 +137,7 @@ def _parse_game(game_data: dict) -> SurveilGame:
     """1ゲームのイベントリストを Action 形式のリストに変換する。"""
     active_player = ""
     actions: list[SurveilGameAction] = []
+    life_totals: dict[str, int] = {}  # player_name → current life
 
     for event in game_data.get("events", []):
         event_type = event.get("event_type", "")
@@ -157,6 +160,14 @@ def _parse_game(game_data: dict) -> SurveilGame:
         if event_type == "draw" and not card_name:
             continue
 
+        # life_change: デルタからライフ絶対値を追跡
+        life_total: int | None = None
+        if event_type == "life_change":
+            delta = event.get("delta", 0)
+            current = life_totals.get(player, 20)
+            life_total = current + delta
+            life_totals[player] = life_total
+
         actions.append(SurveilGameAction(
             turn=event.get("turn", 0),
             phase=event.get("phase", ""),
@@ -166,6 +177,7 @@ def _parse_game(game_data: dict) -> SurveilGame:
             card_name=card_name or None,
             target_name=target_name or None,
             sequence=event.get("seq", 0),
+            life_total=life_total,
         ))
 
     mulligans = [

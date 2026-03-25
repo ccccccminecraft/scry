@@ -30,6 +30,7 @@ class GREGameAction(TypedDict):
     target_player: str | None   # プレイヤー対象（すでに名前）
     target_grp_id: int | None   # カード対象の grpId（未解決）
     counter_type: int | None    # counter_type ID（counter_gained のみ。名前は import_service で解決）
+    life_total: int | None      # life_change アクションのみ: ライフ変動後の絶対値
 
 
 class GREGame(TypedDict):
@@ -113,7 +114,7 @@ _BEGINNING_STEP_NAMES = {1: "upkeep", 2: "draw_step", 3: "draw_step"}
 _SKIP_EVENT_TYPES = frozenset({
     "turn_start", "phase_change",
     "ability_mana", "ability_resolved",
-    "resolve", "life_change",
+    "resolve",
 })
 
 # event_type → action_type
@@ -132,6 +133,7 @@ _EVENT_TO_ACTION: dict[str, str] = {
     "counter_gained":    "counter_gained",
     "counter_lost":      "counter_lost",
     "emblem_created":    "emblem_created",
+    "life_change":       "life_change",
 }
 
 
@@ -169,6 +171,7 @@ class _GameContext:
     phase: str = "beginning"
     events: list[_EventData] = field(default_factory=list)
     sequence: int = 0
+    life_totals: dict[str, int] = field(default_factory=dict)  # player_name → current life
 
     def next_seq(self) -> int:
         self.sequence += 1
@@ -317,8 +320,12 @@ def _events_to_actions(
         target_player: str | None = None
         target_grp_id: int | None = None
         counter_type_id: int | None = None
+        life_total: int | None = None
 
-        if et in ("counter_gained", "counter_lost"):
+        if et == "life_change":
+            life_total = detail.get("life_total")
+
+        elif et in ("counter_gained", "counter_lost"):
             counter_type_id = detail.get("counter_type")
 
         elif et == "cast":
@@ -359,6 +366,7 @@ def _events_to_actions(
             target_player=target_player,
             target_grp_id=target_grp_id,
             counter_type=counter_type_id,
+            life_total=life_total,
         ))
 
     return actions
@@ -542,6 +550,15 @@ def _handle_game_state(msg: dict, ctx: _MatchContext) -> None:
         game_ctx.mtgo_turn_number = _to_mtgo_turn(turn_number)
     if active_player is not None:
         game_ctx.active_player_seat = active_player
+
+    # players: ライフ初期値を life_totals に記録（まだ未初期化のプレイヤーのみ）
+    for p in gsm.get("players", []):
+        seat = p.get("systemSeatNumber")
+        life = p.get("lifeTotal")
+        if seat is not None and life is not None:
+            name = _seat_to_name(seat, ctx)
+            if name not in game_ctx.life_totals:
+                game_ctx.life_totals[name] = life
 
     # persistentAnnotations: TargetSpec を累積
     for ann in gsm.get("persistentAnnotations", []):
@@ -735,10 +752,15 @@ def _handle_life_change(ann: dict, game_ctx: _GameContext, ctx: _MatchContext) -
     seat = affected_ids[0] if affected_ids else None
     if seat not in (1, 2):
         return
+    player = _seat_to_name(seat, ctx)
+    current = game_ctx.life_totals.get(player, 20)
+    new_total = current + delta
+    game_ctx.life_totals[player] = new_total
     game_ctx.add_event(
         "life_change",
-        player=_seat_to_name(seat, ctx),
+        player=player,
         delta=delta,
+        life_total=new_total,
     )
 
 

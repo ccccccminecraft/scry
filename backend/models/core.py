@@ -102,5 +102,6 @@ class Action(Base):
     target_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     phase: Mapped[str | None] = mapped_column(Text, nullable=True)
+    life_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     game: Mapped["Game"] = relationship(back_populates="actions")
