@@ -1,5 +1,12 @@
 # Scryfall API トグル機能 設計ドキュメント
 
+## 実装ステータス
+
+**実装済み（2026-03-25）**
+- バックエンド・フロントエンドともに設計通りに実装済み
+- `services/scryfall_settings.py` 新規作成済み（`is_scryfall_enabled(db)`）
+- `SettingsView.vue` に「Scryfall API を利用する」チェックボックス追加済み
+
 ## 概要
 
 設定画面に「Scryfall API を利用する」チェックボックスを追加する。

@@ -22,6 +22,7 @@
 |----------|------|------|
 | POST | `/api/import` | .dat ファイル単体インポート（multipart/form-data） |
 | POST | `/api/import/batch` | .dat ファイル一括インポート（multipart/form-data、複数ファイル） |
+| POST | `/api/import/cancel` | インポート中断リクエスト → `{"ok": true}` |
 | GET | `/api/import/mtgo/pending` | 未取り込みファイル一覧（`quick_import_folder` を直接スキャン） |
 | POST | `/api/import/mtgo/scan` | `quick_import_folder` の pending ファイルを一括インポート |
 
@@ -61,8 +62,8 @@
 |----------|------|------|
 | GET | `/api/matches` | 試合一覧（フィルター・ページネーション対応） |
 | GET | `/api/matches/latest-date` | 最新インポート日時取得 |
-| GET | `/api/matches/export/count` | エクスポート対象件数取得 |
-| GET | `/api/matches/export` | Markdown エクスポート（text/plain） |
+| GET | `/api/matches/export/count` | エクスポート対象件数取得（対戦フィルターパラメータ対応） |
+| GET | `/api/matches/export` | Markdown エクスポート（text/plain）。出力制御: `include_summary`, `include_deck_stats`, `include_card_stats`, `include_deck_list`, `include_matches`, `include_actions`（各 bool）。件数上限: `limit`（int）, `no_limit`（bool） |
 | GET | `/api/matches/bulk-assign-deck-version/count` | 一括デッキ紐づけ対象件数 |
 | POST | `/api/matches/bulk-assign-deck-version` | デッキバージョン一括紐づけ |
 | GET | `/api/matches/{match_id}` | 試合詳細（プレイヤー・ゲーム一覧） |
@@ -79,13 +80,15 @@
 | `offset` | int | オフセット（default: 0） |
 | `player` | str | プレイヤー名フィルター |
 | `opponent` | str | 相手プレイヤー名フィルター |
-| `deck_id` | int | デッキ ID フィルター |
-| `deck` | str | デッキ名フィルター |
-| `version_id` | int | デッキバージョン ID フィルター |
-| `opponent_deck` | str | 相手デッキ名フィルター |
+| `deck_ids` | int[] | デッキ ID フィルター（複数指定可・OR）`deck_ids=1&deck_ids=2` 形式 |
+| `decks` | str[] | アーキタイプ名フィルター（複数指定可・OR） |
+| `version_id` | int | デッキバージョン ID フィルター（`deck_ids` が 1 件のときのみ適用） |
+| `opponent_decks` | str[] | 相手デッキ名フィルター（複数指定可・OR） |
 | `format` | str | フォーマットフィルター |
 | `date_from` | str | 開始日（ISO 8601） |
 | `date_to` | str | 終了日（ISO 8601） |
+
+> `deck_ids` と `decks` は排他的。同時に送られた場合は `deck_ids` が優先。
 
 ---
 
@@ -111,7 +114,7 @@
 | GET | `/api/stats` | 集計統計（勝率・マリガン・ターン数等） |
 | GET | `/api/stats/cards` | カード別統計（相手カード出現頻度等） |
 
-主なクエリパラメータ: `player`, `opponent`, `deck`, `opponent_deck`, `format`, `date_from`, `date_to`
+主なクエリパラメータ: `player`, `opponent`, `deck_ids`（int[]）, `decks`（str[]）, `version_id`, `opponent_decks`（str[]）, `format`, `date_from`, `date_to`
 
 ---
 
@@ -207,7 +210,7 @@
 
 | メソッド | パス | 説明 |
 |----------|------|------|
-| GET | `/api/settings` | 設定取得（`default_player`, `llm_provider`, `quick_import_folder`, `auto_import_enabled`, `auto_import_interval_sec`, APIキー設定済みフラグ） |
+| GET | `/api/settings` | 設定取得（`default_player`, `llm_provider`, `quick_import_folder`, `auto_import_enabled`, `auto_import_interval_sec`, `scryfall_enabled`, `default_date_filter`, `default_date_filter_from`, APIキー設定済みフラグ） |
 | PUT | `/api/settings` | 設定更新 |
 | DELETE | `/api/settings/api-key` | API キー削除 |
 

@@ -1,5 +1,12 @@
 # 設計書: 使用デッキ・相手デッキ 複数選択（OR）
 
+## 実装ステータス
+
+**実装済み（2026-03-25）**
+- 全変更ファイル一覧の内容を設計通りに実装済み
+- axios の `paramsSerializer: { indexes: null }` 設定により配列パラメータを `key=v1&key=v2` 形式で送信
+- FastAPI 側は `list[int] = Query(default=[])` / `list[str] = Query(default=[])` で受信
+
 ## 1. 概要
 
 FilterBar の「使用デッキ」「相手デッキ」フィルターを複数選択に対応させ、選択した項目を OR 条件で絞り込む。

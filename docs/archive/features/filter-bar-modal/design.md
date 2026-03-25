@@ -1,5 +1,20 @@
 # フィルターバー モーダル選択 設計ドキュメント
 
+## 実装ステータス
+
+**実装済み（2026-03-25）**
+- 全選択項目をボタン＋モーダルに変更済み
+- `FilterSelectModal.vue`・`DeckSelectModal.vue`・`DateRangeModal.vue` 新規作成済み
+- `FilterBar.vue` 全面改修済み
+
+**設計からの変更点（filter-multiselect 機能追加に伴う変更）:**
+- `DeckSelectModal.vue` の props/emits を単一値から配列に変更:
+  - `deckId: number | null` → `deckIds: number[]`
+  - `deck: string` → `decks: string[]`
+  - emits: `selectDeckId`・`selectDeck` → `update:deckIds`・`update:decks`
+- `FilterSelectModal.vue` に `multiple` props と複数選択モードを追加（相手デッキ用）
+- 詳細は `docs/features/filter-multiselect/design.md` を参照
+
 ## 概要
 
 フィルターバーの各選択項目をネイティブ `<select>` からボタン＋モーダルに置き換える。
