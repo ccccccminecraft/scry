@@ -32,6 +32,8 @@ export interface GameSummary {
   turns: number
   first_player: string
   mulligans: Record<string, number>
+  sideboard_in: Record<string, number> | null
+  sideboard_out: Record<string, number> | null
 }
 
 export interface MatchDetail {

@@ -69,6 +69,21 @@ _MTGA_STANDARD_SETS = frozenset({
 _LEGAL_STATUSES = {"legal", "banned"}
 
 
+def _calc_sideboard_diff(
+    prev_main: list[str],
+    cur_main: list[str],
+) -> tuple[dict[str, int], dict[str, int]]:
+    """2ゲーム間のメインデッキ差分からサイドイン/サイドアウトを算出する。"""
+    from collections import Counter
+    prev_counter = Counter(prev_main)
+    cur_counter = Counter(cur_main)
+    diff = cur_counter - prev_counter
+    sideboard_in = dict(diff)
+    diff_out = prev_counter - cur_counter
+    sideboard_out = dict(diff_out)
+    return sideboard_in, sideboard_out
+
+
 class ImportResult(TypedDict):
     match_id: str
     status: Literal["imported", "skipped", "error"]
@@ -384,7 +399,7 @@ class SurveilImportService:
     ) -> ImportResult:
         """
         Surveil 出力ファイルをデシリアライズした dict を受け取りパース・保存する。
-        schema_version=2 と schema_version=3 の両方に対応する。
+        schema_version=2 / 3 / 4 に対応する。
 
         Parameters
         ----------
@@ -396,7 +411,7 @@ class SurveilImportService:
         ImportResult
             status が "imported" / "skipped" / "error" のいずれか
         """
-        if data.get("schema_version") == 3:
+        if data.get("schema_version") in (3, 4):
             return self._import_v3(data, filename, background_tasks, skip_scryfall=skip_scryfall)
 
         try:
@@ -481,6 +496,8 @@ class SurveilImportService:
                 winner=game_dict["winner"],
                 turns=game_dict["turns"],
                 first_player=game_dict["first_player"],
+                sideboard_in=json_module.dumps(game_dict["sideboard_in"], ensure_ascii=False) if game_dict.get("sideboard_in") is not None else None,
+                sideboard_out=json_module.dumps(game_dict["sideboard_out"], ensure_ascii=False) if game_dict.get("sideboard_out") is not None else None,
             )
             self._db.add(game)
             self._db.flush()
@@ -515,7 +532,7 @@ class SurveilImportService:
         background_tasks: BackgroundTasks | None = None,
         skip_scryfall: bool = False,
     ) -> ImportResult:
-        """schema_version=3（GRE メッセージ形式）のインポート処理。"""
+        """schema_version=3/4（GRE メッセージ形式）のインポート処理。"""
         try:
             gre_result = parse_gre_json(data)
         except GREParseError as e:
@@ -627,6 +644,12 @@ class SurveilImportService:
         }  # counter_gained / counter_lost 両方を含む
         counter_name_map = self._build_counter_name_map(counter_type_ids)
 
+        # サイドボード差分計算用: 常にゲーム1のデッキ（top-level の deck_grp_ids）を基準とする
+        # ゲーム2もゲーム3も元のデッキからのサイドイン/アウトを示すため
+        game1_main_names: list[str] = [
+            name_map[g] for g in gre_result["deck_grp_ids"] if g in name_map
+        ]
+
         games: list[SurveilGame] = []
         for game in gre_result["games"]:
             actions: list[SurveilGameAction] = []
@@ -654,6 +677,14 @@ class SurveilImportService:
                     sequence=act["seq"],
                     life_total=act.get("life_total"),
                 ))
+            # サイドボード差分: SubmitDeckReq が存在するゲームのみ算出
+            per_game_ids = game.get("deck_grp_ids_per_game", [])
+            if per_game_ids:
+                cur_main_names: list[str] = [name_map[g] for g in per_game_ids if g in name_map]
+                sideboard_in, sideboard_out = _calc_sideboard_diff(game1_main_names, cur_main_names)
+            else:
+                sideboard_in, sideboard_out = None, None
+
             games.append(SurveilGame(
                 game_number=game["game_number"],
                 winner=game["winner"],
@@ -661,6 +692,8 @@ class SurveilImportService:
                 first_player=game["first_player"],
                 mulligans=game["mulligans"],
                 actions=actions,
+                sideboard_in=sideboard_in,
+                sideboard_out=sideboard_out,
             ))
 
         return SurveilParseResult(

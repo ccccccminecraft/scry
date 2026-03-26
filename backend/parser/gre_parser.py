@@ -1,7 +1,7 @@
 """
-gre_parser.py - Surveil schema_version=3 JSON (GRE メッセージ形式) のパーサー
+gre_parser.py - Surveil schema_version=4 JSON (GRE メッセージ形式) のパーサー
 
-schema_version=3 JSON の gre_messages から各ゲームのイベントを抽出する。
+schema_version=4 JSON の gre_messages から各ゲームのイベントを抽出する。
 カード名解決（grpId → card_name）はこのパーサーでは行わない。
 Scry 側の SurveilImportService が Scryfall API を使って解決する。
 
@@ -40,6 +40,8 @@ class GREGame(TypedDict):
     first_player: str
     mulligans: list[dict]
     actions: list[GREGameAction]
+    deck_grp_ids_per_game: list[int]       # submit_deck_resps から取得したこのゲームのメインデッキ（ゲーム1は空リスト）
+    sideboard_grp_ids_per_game: list[int]  # 同上、サイドボード
 
 
 class GREParseResult(TypedDict):
@@ -209,8 +211,8 @@ def parse_gre_json(data: dict) -> GREParseResult:
     grpId は未解決のまま返す（呼び出し元が fetch_by_arena_ids() で解決する）。
     """
     version = data.get("schema_version")
-    if version != 3:
-        raise ParseError(f"Expected schema_version=3, got {version!r}")
+    if version != 4:
+        raise ParseError(f"Expected schema_version=4, got {version!r}")
 
     match_id = data.get("match_id", "")
     if not match_id:
@@ -245,6 +247,10 @@ def parse_gre_json(data: dict) -> GREParseResult:
     # top-level の games メタデータ（winner / turns / first_player / mulligans）とマージ
     games_meta: dict[int, dict] = {g["game_number"]: g for g in data.get("games", [])}
 
+    # submit_deck_resps[N] = ゲーム N+2 のサイドボード確定後デッキ（N=0 がゲーム2用）
+    # ClientMessageType_SubmitDeckResp から取得した実際のサイドボーディング後デッキ
+    submit_deck_resps: list[dict] = data.get("submit_deck_resps", [])
+
     games: list[GREGame] = []
     for game_ctx in ctx.games:
         meta = games_meta.get(game_ctx.game_number, {})
@@ -253,6 +259,9 @@ def parse_gre_json(data: dict) -> GREParseResult:
             for m in meta.get("mulligans", [])
         ]
         actions = _events_to_actions(game_ctx, ctx)
+        # ゲーム M (M>=2) のサイドボード差分は submit_deck_resps[M-2] から取得する
+        game_idx = game_ctx.game_number - 2
+        submit = submit_deck_resps[game_idx] if 0 <= game_idx < len(submit_deck_resps) else {}
         games.append(GREGame(
             game_number=game_ctx.game_number,
             winner=meta.get("winner", ""),
@@ -260,6 +269,8 @@ def parse_gre_json(data: dict) -> GREParseResult:
             first_player=meta.get("first_player", ""),
             mulligans=mulligans,
             actions=actions,
+            deck_grp_ids_per_game=submit.get("deck_grp_ids", []),
+            sideboard_grp_ids_per_game=submit.get("sideboard_grp_ids", []),
         ))
 
     # バッチ解決のために全 grpId を収集
@@ -767,6 +778,7 @@ def _handle_life_change(ann: dict, game_ctx: _GameContext, ctx: _MatchContext) -
 def _handle_mulligan_req(msg: dict, ctx: _MatchContext) -> None:
     # マリガン情報は schema_version=3 の top-level games.mulligans から取得するため、ここでは何もしない
     pass
+
 
 
 def _handle_declare_attackers(msg: dict, ctx: _MatchContext) -> None:

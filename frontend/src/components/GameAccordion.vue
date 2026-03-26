@@ -16,13 +16,25 @@
 
     <div v-if="open" class="accordion__body">
       <div v-if="loading" class="accordion__loading">読み込み中...</div>
-      <ActionLog v-else-if="actions" :actions="actions" />
+      <template v-else>
+        <div v-if="hasSideboard" class="accordion__sideboard">
+          <div v-if="sideboardIn.length" class="accordion__sideboard-row">
+            <span class="accordion__sideboard-label accordion__sideboard-label--in">サイドイン</span>
+            <span class="accordion__sideboard-cards">{{ sideboardIn.join(', ') }}</span>
+          </div>
+          <div v-if="sideboardOut.length" class="accordion__sideboard-row">
+            <span class="accordion__sideboard-label accordion__sideboard-label--out">サイドアウト</span>
+            <span class="accordion__sideboard-cards">{{ sideboardOut.join(', ') }}</span>
+          </div>
+        </div>
+        <ActionLog v-if="actions" :actions="actions" />
+      </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import ActionLog from './ActionLog.vue'
 import { fetchActionLog, type ActionEntry, type GameSummary } from '../api/matches'
 import { useToast } from '../composables/useToast'
@@ -33,6 +45,21 @@ const { showError } = useToast()
 const open = ref(false)
 const actions = ref<ActionEntry[] | null>(null)
 const loading = ref(false)
+
+function formatSideboard(record: Record<string, number>): string[] {
+  return Object.entries(record).sort().map(([name, cnt]) => `${name} x${cnt}`)
+}
+
+const hasSideboard = computed(() =>
+  (props.game.sideboard_in && Object.keys(props.game.sideboard_in).length > 0) ||
+  (props.game.sideboard_out && Object.keys(props.game.sideboard_out).length > 0)
+)
+const sideboardIn = computed(() =>
+  props.game.sideboard_in ? formatSideboard(props.game.sideboard_in) : []
+)
+const sideboardOut = computed(() =>
+  props.game.sideboard_out ? formatSideboard(props.game.sideboard_out) : []
+)
 
 async function toggle() {
   open.value = !open.value
@@ -111,5 +138,40 @@ async function toggle() {
 
 .accordion__body {
   border-top: 1px solid #e8e0d0;
+}
+
+.accordion__sideboard {
+  padding: 8px 14px;
+  background: #f5f0e8;
+  border-bottom: 1px solid #e8e0d0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.accordion__sideboard-row {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  align-items: baseline;
+}
+
+.accordion__sideboard-label {
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 70px;
+}
+
+.accordion__sideboard-label--in {
+  color: #2a6b2a;
+}
+
+.accordion__sideboard-label--out {
+  color: #8b2a2a;
+}
+
+.accordion__sideboard-cards {
+  color: #2c2416;
+  line-height: 1.4;
 }
 </style>

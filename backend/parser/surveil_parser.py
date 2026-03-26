@@ -64,6 +64,8 @@ class SurveilGame(TypedDict):
     first_player: str
     mulligans: list[dict]
     actions: list[SurveilGameAction]
+    sideboard_in: dict[str, int] | None   # {"card_name": count} ゲーム1はNone
+    sideboard_out: dict[str, int] | None  # {"card_name": count} ゲーム1はNone
 
 
 class SurveilParseResult(TypedDict):
@@ -192,6 +194,8 @@ def _parse_game(game_data: dict) -> SurveilGame:
         first_player=game_data.get("first_player", ""),
         mulligans=mulligans,
         actions=actions,
+        sideboard_in=None,
+        sideboard_out=None,
     )
 
 

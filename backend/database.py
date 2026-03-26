@@ -91,6 +91,16 @@ def init_db() -> None:
         # mtga_counter_types: 新規テーブル（create_all で自動作成されるため migration 不要）
         # ※ 既存 DB との互換性のため init_db で create_all を呼ぶことで対応済み
 
+        # games: sideboard_in / sideboard_out 列の追加
+        if "games" in inspector.get_table_names():
+            cols = {c["name"] for c in inspector.get_columns("games")}
+            if "sideboard_in" not in cols:
+                conn.execute(text("ALTER TABLE games ADD COLUMN sideboard_in TEXT"))
+                conn.commit()
+            if "sideboard_out" not in cols:
+                conn.execute(text("ALTER TABLE games ADD COLUMN sideboard_out TEXT"))
+                conn.commit()
+
         # matches: source 列の追加
         if "matches" in inspector.get_table_names():
             cols = {c["name"] for c in inspector.get_columns("matches")}
