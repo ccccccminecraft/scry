@@ -64,18 +64,17 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    app.quit()
-  }
-})
-
-app.on('before-quit', () => {
-  if (backendProcess?.pid) {
-    if (process.platform === 'win32') {
-      // PyInstaller は子プロセスを生成するため、taskkill /T でツリーごと終了させる
-      spawnSync('taskkill', ['/F', '/T', '/PID', String(backendProcess.pid)])
-    } else {
-      backendProcess.kill()
+    // app.quit() を呼ぶ前にバックエンドを終了する
+    // before-quit 内での spawnSync は Electron 終了シーケンス中のため不安定
+    if (backendProcess?.pid) {
+      if (process.platform === 'win32') {
+        // PyInstaller は子プロセスを生成するため taskkill /T でツリーごと終了させる
+        spawnSync('taskkill', ['/F', '/T', '/PID', String(backendProcess.pid)])
+      } else {
+        backendProcess.kill()
+      }
     }
+    app.quit()
   }
 })
 
