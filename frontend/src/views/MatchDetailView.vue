@@ -22,8 +22,8 @@
         <div v-for="p in detail.players" :key="p.player_name" class="player-row">
           <span class="player-row__name">{{ p.player_name }}</span>
 
-          <!-- デッキ名インライン編集 -->
-          <span class="player-row__label">デッキ名:</span>
+          <!-- アーキタイプインライン編集 -->
+          <span class="player-row__label">アーキタイプ:</span>
           <template v-if="deckEditing[p.player_name]">
             <input
               v-model="deckDraft[p.player_name]"
@@ -179,7 +179,7 @@ async function confirmDeck(p: PlayerInfo) {
     await patchPlayer(detail.value!.match_id, p.player_name, { deck_name: newName })
     p.deck_name = newName
   } catch (e) {
-    showError(e instanceof Error ? e.message : 'デッキ名の更新に失敗しました')
+    showError(e instanceof Error ? e.message : 'アーキタイプの更新に失敗しました')
     deckDraft[p.player_name] = p.deck_name ?? ''
   }
 }

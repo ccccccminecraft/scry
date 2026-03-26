@@ -69,7 +69,7 @@ import FilterBar from '../components/FilterBar.vue'
 
 const { showError } = useToast()
 const {
-  useDeckManager, deckId, deck, versionId, opponentDeck, dateFrom, dateTo,
+  deckIds, decks, versionId, opponentDecks, dateFrom, dateTo,
   player, opponent, format,
   init,
 } = useFilterState()
@@ -84,13 +84,18 @@ const totalPages = computed(() => Math.ceil(total.value / 10))
 async function load() {
   loading.value = true
   try {
+    const hasSingleDeck = deckIds.value.length === 1 && decks.value.length === 0
     const res = await fetchMatches(10, (page.value - 1) * 10, {
       player: player.value || undefined,
       opponent: opponent.value || undefined,
-      deck_id: useDeckManager.value && !versionId.value ? (deckId.value ?? undefined) : undefined,
-      deck: useDeckManager.value ? undefined : (deck.value || undefined),
-      version_id: useDeckManager.value ? (versionId.value ?? undefined) : undefined,
-      opponent_deck: opponentDeck.value || undefined,
+      ...(hasSingleDeck && versionId.value
+        ? { version_id: versionId.value }
+        : deckIds.value.length > 0
+          ? { deck_ids: deckIds.value }
+          : decks.value.length > 0
+            ? { decks: decks.value }
+            : {}),
+      opponent_decks: opponentDecks.value.length > 0 ? opponentDecks.value : undefined,
       format: format.value || undefined,
       date_from: dateFrom.value || undefined,
       date_to: dateTo.value || undefined,
@@ -105,8 +110,9 @@ async function load() {
 }
 
 watch(
-  [player, opponent, useDeckManager, deckId, deck, versionId, opponentDeck, format, dateFrom, dateTo],
+  [player, opponent, deckIds, decks, versionId, opponentDecks, format, dateFrom, dateTo],
   () => { page.value = 1; load() },
+  { deep: true },
 )
 
 watch(page, load)

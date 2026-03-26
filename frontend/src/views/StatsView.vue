@@ -29,6 +29,14 @@
           <div class="stats__card-value">{{ pct(stats.win_rate) }}</div>
         </div>
         <div class="stats__card">
+          <div class="stats__card-label">先行勝率</div>
+          <div class="stats__card-value">{{ pct(stats.first_play_win_rate) }}</div>
+        </div>
+        <div class="stats__card">
+          <div class="stats__card-label">後攻勝率</div>
+          <div class="stats__card-value">{{ pct(stats.second_play_win_rate) }}</div>
+        </div>
+        <div class="stats__card">
           <div class="stats__card-label">平均ターン数</div>
           <div class="stats__card-value">{{ stats.avg_turns.toFixed(1) }}</div>
         </div>
@@ -38,39 +46,46 @@
         </div>
       </div>
 
-      <!-- グラフ行 -->
+      <!-- グラフ行: 勝率推移 + 対戦相手デッキ別勝率 -->
       <div class="stats__charts">
         <!-- 勝率推移 -->
-        <div class="stats__chart-box stats__chart-box--wide">
-          <div class="stats__chart-title-row">
-            <div class="stats__chart-title">
-              勝率推移（{{ historyMode === 0 ? '全' : '直近' }}{{ stats.win_rate_history.length }}試合）
-            </div>
-            <select v-model="historyMode" class="stats__history-select" @change="loadStats">
-              <option :value="20">直近20試合</option>
-              <option :value="0">全試合</option>
-            </select>
+        <div class="stats__chart-box stats__chart-box--history">
+          <div class="stats__chart-title">勝率推移（{{ stats.win_rate_history.length }}試合）</div>
+          <div class="stats__chart-grow">
+            <WinRateHistoryChart
+              v-if="stats.win_rate_history.length > 0"
+              :data="stats.win_rate_history"
+            />
+            <div v-else class="stats__no-data">データなし</div>
           </div>
-          <WinRateHistoryChart
-            v-if="stats.win_rate_history.length > 0"
-            :data="stats.win_rate_history"
-          />
-          <div v-else class="stats__no-data">データなし</div>
         </div>
 
-        <!-- 先手/後手 -->
+        <!-- 対戦相手デッキ別勝率 -->
         <div class="stats__chart-box">
-          <div class="stats__chart-title">先手 / 後手 勝率</div>
-          <FirstSecondChart
-            :firstRate="stats.first_play_win_rate"
-            :secondRate="stats.second_play_win_rate"
-          />
-        </div>
-
-        <!-- デッキ別 -->
-        <div v-if="stats.deck_stats.length > 0" class="stats__chart-box">
-          <div class="stats__chart-title">デッキ別勝率</div>
-          <DeckStatsChart :data="stats.deck_stats" />
+          <div class="stats__chart-title">対戦相手デッキ別勝率（Top 10）</div>
+          <div v-if="stats.opponent_deck_stats.length > 0" class="stats__table-wrap">
+            <table class="stats__table">
+              <thead>
+                <tr>
+                  <th>アーキタイプ名</th>
+                  <th class="stats__th-num stats__th-sort" @click="toggleOppSort('matches')">
+                    対戦数 <span class="stats__sort-icon">{{ oppSortIcon('matches') }}</span>
+                  </th>
+                  <th class="stats__th-num stats__th-sort" @click="toggleOppSort('win_rate')">
+                    勝率 <span class="stats__sort-icon">{{ oppSortIcon('win_rate') }}</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="d in sortedOpponentDeckStats" :key="d.deck_name">
+                  <td>{{ d.deck_name }}</td>
+                  <td class="stats__td-num">{{ d.matches }}</td>
+                  <td class="stats__td-num">{{ pct(d.win_rate) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-else class="stats__no-data">データなし</div>
         </div>
       </div>
 
@@ -136,13 +151,11 @@ import { fetchStats, fetchCardStats, type StatsResponse, type CardStat } from '.
 import { useFilterState } from '../composables/useFilterState'
 import { cardImageUrl } from '../api/decklist'
 import WinRateHistoryChart from '../components/charts/WinRateHistoryChart.vue'
-import FirstSecondChart from '../components/charts/FirstSecondChart.vue'
-import DeckStatsChart from '../components/charts/DeckStatsChart.vue'
 import FilterBar from '../components/FilterBar.vue'
 
 const { showError } = useToast()
 const {
-  useDeckManager, deckId, deck, versionId, opponentDeck, dateFrom, dateTo,
+  deckIds, decks, versionId, opponentDecks, dateFrom, dateTo,
   player, opponent, format,
   playerList, deckList,
   minDeckMatches,
@@ -150,13 +163,12 @@ const {
 } = useFilterState()
 
 const selectedDeckTile = computed(() => {
-  if (!useDeckManager.value || !deckId.value) return null
-  const d = deckList.value.find(d => d.id === deckId.value)
+  if (deckIds.value.length !== 1) return null
+  const d = deckList.value.find(d => d.id === deckIds.value[0])
   return d?.tile_scryfall_id ? cardImageUrl(d.tile_scryfall_id, 'normal') : null
 })
 
 const stats = ref<StatsResponse | null>(null)
-const historyMode = ref<number>(20)
 const cardStats = ref<CardStat[]>([])
 const opponentCardStats = ref<CardStat[]>([])
 
@@ -180,6 +192,31 @@ function sortIcon(key: SortKey) {
   return sortAsc.value ? '↑' : '↓'
 }
 
+type OppSortKey = 'matches' | 'win_rate'
+const oppSortKey = ref<OppSortKey>('matches')
+const oppSortAsc = ref(false)
+
+function toggleOppSort(key: OppSortKey) {
+  if (oppSortKey.value === key) {
+    oppSortAsc.value = !oppSortAsc.value
+  } else {
+    oppSortKey.value = key
+    oppSortAsc.value = false
+  }
+}
+
+function oppSortIcon(key: OppSortKey) {
+  if (oppSortKey.value !== key) return '↕'
+  return oppSortAsc.value ? '↑' : '↓'
+}
+
+const sortedOpponentDeckStats = computed(() => {
+  if (!stats.value) return []
+  const key = oppSortKey.value
+  const dir = oppSortAsc.value ? 1 : -1
+  return [...stats.value.opponent_deck_stats].sort((a, b) => (a[key] - b[key]) * dir)
+})
+
 const activeCardStats = computed(() =>
   cardStatsPerspective.value === 'self' ? cardStats.value : opponentCardStats.value
 )
@@ -197,31 +234,31 @@ async function loadAll() {
   await Promise.all([loadStats(), loadCardStats(), loadOpponentCardStats()])
 }
 
+function _deckFilters() {
+  const hasSingleDeck = deckIds.value.length === 1 && decks.value.length === 0
+  if (hasSingleDeck && versionId.value) return { version_id: versionId.value }
+  if (deckIds.value.length > 0) return { deck_ids: deckIds.value }
+  if (decks.value.length > 0) return { decks: decks.value }
+  return {}
+}
+
 async function loadStats() {
   if (!player.value) return
   try {
     stats.value = await fetchStats({
       player: player.value,
       opponent: opponent.value || undefined,
-      deck_id: useDeckManager.value && !versionId.value ? (deckId.value ?? undefined) : undefined,
-      deck: useDeckManager.value ? undefined : (deck.value || undefined),
-      version_id: useDeckManager.value ? (versionId.value ?? undefined) : undefined,
-      opponent_deck: opponentDeck.value || undefined,
+      ..._deckFilters(),
+      opponent_decks: opponentDecks.value.length > 0 ? opponentDecks.value : undefined,
       format: format.value || undefined,
       date_from: dateFrom.value || undefined,
       date_to: dateTo.value || undefined,
-      history_size: historyMode.value,
+      history_size: 0,
       min_deck_matches: minDeckMatches.value,
     })
   } catch {
     showError('統計の取得に失敗しました')
   }
-}
-
-function _deckFilters() {
-  if (!useDeckManager.value) return { deck: deck.value || undefined }
-  if (versionId.value) return { version_id: versionId.value }
-  return { deck_id: deckId.value ?? undefined }
 }
 
 async function loadCardStats() {
@@ -230,7 +267,7 @@ async function loadCardStats() {
     player: player.value,
     opponent: opponent.value || undefined,
     ..._deckFilters(),
-    opponent_deck: opponentDeck.value || undefined,
+    opponent_decks: opponentDecks.value.length > 0 ? opponentDecks.value : undefined,
     format: format.value || undefined,
     date_from: dateFrom.value || undefined,
     date_to: dateTo.value || undefined,
@@ -248,7 +285,7 @@ async function loadOpponentCardStats() {
     player: player.value,
     opponent: opponent.value || undefined,
     ..._deckFilters(),
-    opponent_deck: opponentDeck.value || undefined,
+    opponent_decks: opponentDecks.value.length > 0 ? opponentDecks.value : undefined,
     format: format.value || undefined,
     date_from: dateFrom.value || undefined,
     date_to: dateTo.value || undefined,
@@ -261,8 +298,9 @@ async function loadOpponentCardStats() {
 }
 
 watch(
-  [player, opponent, useDeckManager, deckId, deck, versionId, opponentDeck, format, dateFrom, dateTo],
+  [player, opponent, deckIds, decks, versionId, opponentDecks, format, dateFrom, dateTo],
   loadAll,
+  { deep: true },
 )
 
 async function activate() {
@@ -357,9 +395,15 @@ onActivated(activate)
   min-width: 220px;
 }
 
-.stats__chart-box--wide {
-  flex: 2;
-  min-width: 340px;
+.stats__chart-box--history {
+  display: flex;
+  flex-direction: column;
+  min-width: 280px;
+}
+
+.stats__chart-grow {
+  flex: 1;
+  min-height: 0;
 }
 
 .stats__chart-title-row {
@@ -375,15 +419,6 @@ onActivated(activate)
   font-weight: bold;
 }
 
-.stats__history-select {
-  padding: 2px 6px;
-  border: 1px solid #c8b89a;
-  border-radius: 4px;
-  background: #fff;
-  color: #2c2416;
-  font-size: 11px;
-  font-family: inherit;
-}
 
 .stats__no-data {
   color: #b0a090;

@@ -62,6 +62,8 @@ class Game(Base):
     winner: Mapped[str] = mapped_column(Text, nullable=False)
     turns: Mapped[int] = mapped_column(Integer, nullable=False)
     first_player: Mapped[str] = mapped_column(Text, nullable=False)
+    sideboard_in: Mapped[str | None] = mapped_column(Text, nullable=True)   # JSON: {"card": count}
+    sideboard_out: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON: {"card": count}
 
     match: Mapped["Match"] = relationship(back_populates="games")
     mulligans: Mapped[list["Mulligan"]] = relationship(
@@ -102,5 +104,6 @@ class Action(Base):
     target_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     phase: Mapped[str | None] = mapped_column(Text, nullable=True)
+    life_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     game: Mapped["Game"] = relationship(back_populates="actions")

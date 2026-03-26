@@ -161,6 +161,20 @@
         </button>
         <p class="hint">ヒント: C:\Users\[ユーザー名]\AppData\Local\Apps\2.0</p>
       </div>
+
+      <!-- インポートオプション（Scryfall API 有効時のみ表示） -->
+      <div v-if="scryfallEnabled" class="import-options">
+        <label class="import-options__item">
+          <input type="checkbox" v-model="skipFormatInference" />
+          <span>Scryfall でのフォーマット自動推定をスキップする</span>
+        </label>
+        <p v-if="skipFormatInference" class="import-options__note">
+          ⚡ Scryfall API を呼ばないため大量インポートが高速になります。フォーマットは「不明」として保存されます。
+        </p>
+        <p v-else class="import-options__note import-options__note--muted">
+          未キャッシュのカードは Scryfall API から取得するため、初回の大量インポートは時間がかかります。
+        </p>
+      </div>
     </template>  <!-- /mtgo idle -->
 
     <!-- Scanning -->
@@ -208,12 +222,23 @@
       <div class="progress-bar">
         <div class="progress-bar__fill" :style="{ width: progressPct + '%' }"></div>
       </div>
+      <button
+        class="btn btn--cancel"
+        :disabled="cancelling"
+        @click="handleCancel"
+      >
+        {{ cancelling ? '中断中...' : '中断する' }}
+      </button>
+      <div v-if="importLog.length > 0" class="import-log" ref="importLogEl">
+        <div v-for="(line, i) in importLog" :key="i" class="import-log__line">{{ line }}</div>
+      </div>
     </div>
 
     <!-- Batch result -->
     <template v-else-if="state === 'batch_result'">
       <div class="result">
-        <p class="result__title">✅ インポート完了</p>
+        <p v-if="cancelRequested" class="result__title result__title--cancelled">⚠️ インポートを中断しました</p>
+        <p v-else class="result__title">✅ インポート完了</p>
 
         <table class="result__table">
           <tr>
@@ -223,6 +248,10 @@
           <tr>
             <td class="result__label">スキップ（重複）</td>
             <td class="result__count">{{ batchResult!.skipped }} 件</td>
+          </tr>
+          <tr v-if="batchResult!.cancelled > 0">
+            <td class="result__label">中断スキップ</td>
+            <td class="result__count">{{ batchResult!.cancelled }} 件</td>
           </tr>
           <tr>
             <td class="result__label">エラー</td>
@@ -251,7 +280,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import {
   importSingleFile,
   importSurveilFile,
@@ -259,14 +288,18 @@ import {
   setSurveilFolder,
   clearSurveilFolder,
   getSurveilImportedIds,
+  getImportStatus,
+  cancelImport,
   type ImportResult,
 } from '../api/import'
 import { fetchSettings, updateSettings } from '../api/settings'
 import { fetchLatestMatchDate } from '../api/matches'
 import { useToast } from '../composables/useToast'
+import { useFilterState } from '../composables/useFilterState'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 
 const { showError, showSuccess } = useToast()
+const { refreshLists } = useFilterState()
 
 // 確認ダイアログ
 const confirmVisible = ref(false)
@@ -321,11 +354,23 @@ const importTotal = ref(0)
 const progressPct = computed(() =>
   importTotal.value > 0 ? Math.round((importDone.value / importTotal.value) * 100) : 0,
 )
+const importLog = ref<string[]>([])
+const importLogEl = ref<HTMLElement | null>(null)
+const cancelRequested = ref(false)
+const cancelling = ref(false)
+
+watch(importLog, async () => {
+  await nextTick()
+  if (importLogEl.value) {
+    importLogEl.value.scrollTop = importLogEl.value.scrollHeight
+  }
+}, { deep: true })
 
 // batch result
 interface BatchResult {
   imported: number
   skipped: number
+  cancelled: number
   errors: number
   results: Array<{ name: string; status: string; match_id?: string; reason?: string }>
 }
@@ -333,6 +378,9 @@ const batchResult = ref<BatchResult | null>(null)
 const errorResults = computed(() =>
   batchResult.value?.results.filter(r => r.status === 'error') ?? [],
 )
+
+const skipFormatInference = ref(false)
+const scryfallEnabled = ref(false)
 
 const checkedCount = computed(() => scanFiles.value.filter(f => f.checked).length)
 const allChecked = computed(() => scanFiles.value.length > 0 && checkedCount.value === scanFiles.value.length)
@@ -345,6 +393,7 @@ onMounted(async () => {
       getSurveilFolder(),
     ])
     quickFolder.value = settings.quick_import_folder
+    scryfallEnabled.value = settings.scryfall_enabled ?? false
     latestDate.value = latest
     surveilFolder.value = surveilFolderRes.folder
     if (surveilFolderRes.folder) {
@@ -362,6 +411,9 @@ function reset() {
   scanFiles.value = []
   importDone.value = 0
   importTotal.value = 0
+  importLog.value = []
+  cancelRequested.value = false
+  cancelling.value = false
   batchResult.value = null
   // 最終インポート日時を再取得
   fetchLatestMatchDate('mtgo').then(d => { latestDate.value = d }).catch(() => {})
@@ -552,32 +604,58 @@ async function runSurveilImport(targets: Array<{ path: string; name: string }>) 
   state.value = 'importing'
   importDone.value = 0
   importTotal.value = targets.length
+  importLog.value = []
+  cancelRequested.value = false
+  cancelling.value = false
 
   let imported = 0
   let skipped = 0
+  let cancelled = 0
   let errors = 0
   const results: BatchResult['results'] = []
 
-  for (const target of targets) {
+  const pollInterval = setInterval(async () => {
     try {
-      const buf: Buffer = await window.electronAPI.readDatFile(target.path)
-      const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
-      const result: ImportResult = await importSurveilFile(target.name, ab)
+      const status = await getImportStatus()
+      importLog.value = status.log
+    } catch { /* ignore */ }
+  }, 500)
 
-      results.push({ name: target.name, status: result.status, match_id: result.match_id, reason: result.reason ?? undefined })
-      if (result.status === 'imported') imported++
-      else if (result.status === 'skipped') skipped++
-      else errors++
-    } catch (e) {
-      const reason = e instanceof Error ? e.message : '不明なエラー'
-      results.push({ name: target.name, status: 'error', reason })
-      errors++
+  try {
+    for (const target of targets) {
+      if (cancelRequested.value) {
+        results.push({ name: target.name, status: 'skipped', reason: 'cancelled' })
+        cancelled++
+        importDone.value++
+        continue
+      }
+      try {
+        const buf: Buffer = await window.electronAPI.readDatFile(target.path)
+        const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
+        const result: ImportResult = await importSurveilFile(target.name, ab)
+
+        results.push({ name: target.name, status: result.status, match_id: result.match_id, reason: result.reason ?? undefined })
+        if (result.status === 'imported') imported++
+        else if (result.status === 'skipped') skipped++
+        else errors++
+      } catch (e) {
+        const reason = e instanceof Error ? e.message : '不明なエラー'
+        results.push({ name: target.name, status: 'error', reason })
+        errors++
+      }
+      importDone.value++
     }
-    importDone.value++
+  } finally {
+    clearInterval(pollInterval)
+    try {
+      const status = await getImportStatus()
+      importLog.value = status.log
+    } catch { /* ignore */ }
   }
 
-  batchResult.value = { imported, skipped, errors, results }
+  batchResult.value = { imported, skipped, cancelled, errors, results }
   state.value = 'batch_result'
+  refreshLists()
 }
 
 // ── 手動インポート ───────────────────────────────────────────────────────
@@ -682,36 +760,71 @@ async function startImport() {
   }
 }
 
+async function handleCancel() {
+  if (cancelling.value) return
+  cancelling.value = true
+  cancelRequested.value = true
+  try {
+    await cancelImport()
+  } catch { /* ignore */ }
+}
+
 async function runImport(targets: Array<{ path: string; name: string }>) {
   state.value = 'importing'
   importDone.value = 0
   importTotal.value = targets.length
+  importLog.value = []
+  cancelRequested.value = false
+  cancelling.value = false
 
   let imported = 0
   let skipped = 0
+  let cancelled = 0
   let errors = 0
   const results: BatchResult['results'] = []
 
-  for (const target of targets) {
+  const pollInterval = setInterval(async () => {
     try {
-      const buf: Buffer = await window.electronAPI.readDatFile(target.path)
-      const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
-      const result: ImportResult = await importSingleFile(target.name, ab)
+      const status = await getImportStatus()
+      importLog.value = status.log
+    } catch { /* ignore */ }
+  }, 500)
 
-      results.push({ name: target.name, status: result.status, match_id: result.match_id, reason: result.reason ?? undefined })
-      if (result.status === 'imported') imported++
-      else if (result.status === 'skipped') skipped++
-      else errors++
-    } catch (e) {
-      const reason = e instanceof Error ? e.message : '不明なエラー'
-      results.push({ name: target.name, status: 'error', reason })
-      errors++
+  try {
+    for (const target of targets) {
+      if (cancelRequested.value) {
+        results.push({ name: target.name, status: 'skipped', reason: 'cancelled' })
+        cancelled++
+        importDone.value++
+        continue
+      }
+      try {
+        const buf: Buffer = await window.electronAPI.readDatFile(target.path)
+        const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
+        const result: ImportResult = await importSingleFile(target.name, ab, skipFormatInference.value)
+
+        results.push({ name: target.name, status: result.status, match_id: result.match_id, reason: result.reason ?? undefined })
+        if (result.status === 'imported') imported++
+        else if (result.status === 'skipped') skipped++
+        else errors++
+      } catch (e) {
+        const reason = e instanceof Error ? e.message : '不明なエラー'
+        results.push({ name: target.name, status: 'error', reason })
+        errors++
+      }
+      importDone.value++
     }
-    importDone.value++
+  } finally {
+    clearInterval(pollInterval)
+    try {
+      const status = await getImportStatus()
+      importLog.value = status.log
+    } catch { /* ignore */ }
   }
 
-  batchResult.value = { imported, skipped, errors, results }
+  batchResult.value = { imported, skipped, cancelled, errors, results }
   state.value = 'batch_result'
+  refreshLists()
 }
 
 function formatDate(iso: string): string {
@@ -1014,6 +1127,86 @@ function formatDate(iso: string): string {
 .importing {
   padding: 48px 0;
   text-align: center;
+}
+
+.import-options {
+  margin-top: 24px;
+  padding: 14px 16px;
+  background: #f5f0e8;
+  border: 1px solid #d8cfc0;
+  border-radius: 6px;
+}
+
+.import-options__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #2c2416;
+}
+
+.import-options__item input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.import-options__note {
+  margin: 8px 0 0 23px;
+  font-size: 12px;
+  color: #7a5c30;
+  line-height: 1.5;
+}
+
+.import-options__note--muted {
+  color: #a09080;
+}
+
+.btn--cancel {
+  margin-top: 16px;
+  padding: 6px 20px;
+  background: none;
+  border: 1px solid #a07060;
+  color: #a07060;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.btn--cancel:hover:not(:disabled) {
+  background: #a07060;
+  color: #fff;
+}
+
+.btn--cancel:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.result__title--cancelled {
+  color: #c08030;
+}
+
+.import-log {
+  margin: 16px auto 0;
+  max-width: 640px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: #1e1a14;
+  border: 1px solid #3a3020;
+  border-radius: 4px;
+  padding: 10px 14px;
+  text-align: left;
+}
+
+.import-log__line {
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #c8bfa8;
+  white-space: pre;
 }
 
 .importing__label {

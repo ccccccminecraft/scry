@@ -35,6 +35,9 @@ class SettingsInput(BaseModel):
     auto_import_enabled: bool | None = None
     auto_import_interval_sec: int | None = None
     onboarding_completed: bool | None = None
+    scryfall_enabled: bool | None = None
+    default_date_filter: str | None = None
+    default_date_filter_from: str | None = None
 
 
 @router.get("/settings")
@@ -47,6 +50,9 @@ def get_settings(db: Session = Depends(get_db)):
     auto_enabled = db.get(Setting, "auto_import_enabled")
     auto_interval = db.get(Setting, "auto_import_interval_sec")
     onboarding = db.get(Setting, "onboarding_completed")
+    scryfall_enabled = db.get(Setting, "scryfall_enabled")
+    default_date_filter = db.get(Setting, "default_date_filter")
+    default_date_filter_from = db.get(Setting, "default_date_filter_from")
     return {
         "llm_provider": provider.value if provider else "claude",
         "api_key_configured": get_api_key(db) is not None,
@@ -57,6 +63,9 @@ def get_settings(db: Session = Depends(get_db)):
         "auto_import_enabled": auto_enabled.value == "true" if auto_enabled else False,
         "auto_import_interval_sec": int(auto_interval.value) if auto_interval else 30,
         "onboarding_completed": onboarding.value == "1" if onboarding else False,
+        "scryfall_enabled": scryfall_enabled.value == "true" if scryfall_enabled else False,
+        "default_date_filter": default_date_filter.value if default_date_filter else "none",
+        "default_date_filter_from": default_date_filter_from.value if default_date_filter_from else None,
     }
 
 
@@ -137,6 +146,31 @@ def put_settings(body: SettingsInput, db: Session = Depends(get_db)):
         else:
             db.add(Setting(key="onboarding_completed", value=val))
 
+    if body.scryfall_enabled is not None:
+        s = db.get(Setting, "scryfall_enabled")
+        val = "true" if body.scryfall_enabled else "false"
+        if s:
+            s.value = val
+        else:
+            db.add(Setting(key="scryfall_enabled", value=val))
+
+    if "default_date_filter" in body.model_fields_set and body.default_date_filter is not None:
+        s = db.get(Setting, "default_date_filter")
+        if s:
+            s.value = body.default_date_filter
+        else:
+            db.add(Setting(key="default_date_filter", value=body.default_date_filter))
+
+    if "default_date_filter_from" in body.model_fields_set:
+        s = db.get(Setting, "default_date_filter_from")
+        if not body.default_date_filter_from:
+            if s:
+                db.delete(s)
+        elif s:
+            s.value = body.default_date_filter_from
+        else:
+            db.add(Setting(key="default_date_filter_from", value=body.default_date_filter_from))
+
     db.commit()
     return {"ok": True}
 
@@ -147,3 +181,20 @@ def delete_api_key(db: Session = Depends(get_db)):
     if s:
         db.delete(s)
         db.commit()
+
+
+@router.get("/settings/card-cache-miss/count")
+def get_card_cache_miss_count(db: Session = Depends(get_db)):
+    """card_cache_miss テーブルの全件数を返す。"""
+    from models.cache import CardCacheMiss
+    count = db.query(CardCacheMiss).count()
+    return {"count": count}
+
+
+@router.delete("/settings/card-cache-miss")
+def delete_all_card_cache_miss(db: Session = Depends(get_db)):
+    """card_cache_miss テーブルを全件削除する。"""
+    from models.cache import CardCacheMiss
+    deleted = db.query(CardCacheMiss).delete(synchronize_session=False)
+    db.commit()
+    return {"deleted": deleted}

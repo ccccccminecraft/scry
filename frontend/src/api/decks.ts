@@ -85,13 +85,19 @@ export async function applyDeckDefinitions(
   overwrite: boolean,
   targetDeck?: string,
   targetFormat?: string,
-): Promise<{ updated: number; skipped: number }> {
-  const res = await client.post<{ updated: number; skipped: number }>(
+  inferFormat?: boolean,
+): Promise<{ updated: number; format_updated: number; skipped: number }> {
+  const res = await client.post<{ updated: number; format_updated: number; skipped: number }>(
     '/api/decks/apply-definitions',
     null,
-    { params: { overwrite, target_deck: targetDeck, target_format: targetFormat }, timeout: 120000 },
+    { params: { overwrite, target_deck: targetDeck, target_format: targetFormat, infer_format: inferFormat }, timeout: 120000 },
   )
   return res.data
+}
+
+export async function getUnknownMatchCount(): Promise<number> {
+  const res = await client.get<{ count: number }>('/api/decks/unknown-match-count')
+  return res.data.count
 }
 
 export async function generateDeckDefinitions(

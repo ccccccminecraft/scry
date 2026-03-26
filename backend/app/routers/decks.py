@@ -378,11 +378,19 @@ async def import_deck_definitions(
     return {"imported": imported, "skipped": skipped, "errors": errors}
 
 
+@router.get("/decks/unknown-match-count")
+def get_unknown_match_count(db: Session = Depends(get_db)):
+    """フォーマットが unknown の試合件数を返す。"""
+    count = db.query(Match).filter(Match.format == "unknown").count()
+    return {"count": count}
+
+
 @router.post("/decks/apply-definitions")
 def apply_definitions(
     overwrite: bool = False,
     target_deck: str | None = None,
     target_format: str | None = None,
+    infer_format: bool = False,
     db: Session = Depends(get_db),
 ):
     """
@@ -392,6 +400,7 @@ def apply_definitions(
     - overwrite=true : 全 MatchPlayer を対象（既存のデッキ名も上書き）
     - target_deck 指定時: そのデッキ名の MatchPlayer のみ対象（常に上書き）
     - target_format 指定時: そのフォーマットの試合のみ対象
+    - infer_format=true: マッチしたデッキ定義の format で Match.format も更新する
     """
     from sqlalchemy.orm import selectinload
     from models.core import Game, Action
@@ -408,7 +417,8 @@ def apply_definitions(
     if target_deck is not None:
         # 指定デッキ名の試合のみ対象（常に上書き）
         q = q.filter(MatchPlayer.deck_name == target_deck)
-    elif not overwrite:
+    elif not overwrite and not infer_format:
+        # infer_format=True の場合はデッキ名あり・なし両方を対象にする（フォーマット更新のため）
         q = q.filter(MatchPlayer.deck_name.is_(None))
 
     if target_format is not None:
@@ -417,6 +427,7 @@ def apply_definitions(
     match_players = q.all()
 
     updated = 0
+    format_updated = 0
     for mp in match_players:
         if mp.match is None:
             continue
@@ -432,13 +443,25 @@ def apply_definitions(
                 ):
                     used_cards.add(action.card_name)
 
-        detected = svc._detect_deck(mp.player_name, used_cards, mp.match.format)
-        if detected is not None and detected != mp.deck_name:
+        if infer_format:
+            detected, detected_format = svc._detect_deck(
+                mp.player_name, used_cards, mp.match.format, with_format=True
+            )
+        else:
+            detected = svc._detect_deck(mp.player_name, used_cards, mp.match.format)
+            detected_format = None
+
+        # デッキ名の更新: overwrite=True または未設定の場合のみ上書き
+        if detected is not None and (overwrite or mp.deck_name is None) and detected != mp.deck_name:
             mp.deck_name = detected
             updated += 1
 
+        if infer_format and detected_format and mp.match.format == "unknown":
+            mp.match.format = detected_format
+            format_updated += 1
+
     db.commit()
-    return {"updated": updated, "skipped": len(match_players) - updated}
+    return {"updated": updated, "format_updated": format_updated, "skipped": len(match_players) - updated}
 
 
 @router.get("/deck-definitions/export")

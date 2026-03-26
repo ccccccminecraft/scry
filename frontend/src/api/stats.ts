@@ -15,12 +15,12 @@ export interface DeckStat {
 export interface StatsResponse {
   total_matches: number
   win_rate: number
-  avg_turns: number
-  mulligan_rate: number
   first_play_win_rate: number
   second_play_win_rate: number
+  avg_turns: number
+  mulligan_rate: number
   win_rate_history: WinRatePoint[]
-  deck_stats: DeckStat[]
+  opponent_deck_stats: DeckStat[]
 }
 
 export interface CardStat {
@@ -33,10 +33,10 @@ export interface CardStat {
 export interface StatsFilters {
   player: string
   opponent?: string
-  deck_id?: number
-  deck?: string
+  deck_ids?: number[]
+  decks?: string[]
   version_id?: number
-  opponent_deck?: string
+  opponent_decks?: string[]
   format?: string
   date_from?: string
   date_to?: string

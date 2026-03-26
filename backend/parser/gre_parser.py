@@ -1,7 +1,7 @@
 """
-gre_parser.py - Surveil schema_version=3 JSON (GRE メッセージ形式) のパーサー
+gre_parser.py - Surveil schema_version=4 JSON (GRE メッセージ形式) のパーサー
 
-schema_version=3 JSON の gre_messages から各ゲームのイベントを抽出する。
+schema_version=4 JSON の gre_messages から各ゲームのイベントを抽出する。
 カード名解決（grpId → card_name）はこのパーサーでは行わない。
 Scry 側の SurveilImportService が Scryfall API を使って解決する。
 
@@ -30,6 +30,7 @@ class GREGameAction(TypedDict):
     target_player: str | None   # プレイヤー対象（すでに名前）
     target_grp_id: int | None   # カード対象の grpId（未解決）
     counter_type: int | None    # counter_type ID（counter_gained のみ。名前は import_service で解決）
+    life_total: int | None      # life_change アクションのみ: ライフ変動後の絶対値
 
 
 class GREGame(TypedDict):
@@ -39,6 +40,8 @@ class GREGame(TypedDict):
     first_player: str
     mulligans: list[dict]
     actions: list[GREGameAction]
+    deck_grp_ids_per_game: list[int]       # submit_deck_resps から取得したこのゲームのメインデッキ（ゲーム1は空リスト）
+    sideboard_grp_ids_per_game: list[int]  # 同上、サイドボード
 
 
 class GREParseResult(TypedDict):
@@ -113,7 +116,7 @@ _BEGINNING_STEP_NAMES = {1: "upkeep", 2: "draw_step", 3: "draw_step"}
 _SKIP_EVENT_TYPES = frozenset({
     "turn_start", "phase_change",
     "ability_mana", "ability_resolved",
-    "resolve", "life_change",
+    "resolve",
 })
 
 # event_type → action_type
@@ -132,6 +135,7 @@ _EVENT_TO_ACTION: dict[str, str] = {
     "counter_gained":    "counter_gained",
     "counter_lost":      "counter_lost",
     "emblem_created":    "emblem_created",
+    "life_change":       "life_change",
 }
 
 
@@ -169,6 +173,7 @@ class _GameContext:
     phase: str = "beginning"
     events: list[_EventData] = field(default_factory=list)
     sequence: int = 0
+    life_totals: dict[str, int] = field(default_factory=dict)  # player_name → current life
 
     def next_seq(self) -> int:
         self.sequence += 1
@@ -206,8 +211,8 @@ def parse_gre_json(data: dict) -> GREParseResult:
     grpId は未解決のまま返す（呼び出し元が fetch_by_arena_ids() で解決する）。
     """
     version = data.get("schema_version")
-    if version != 3:
-        raise ParseError(f"Expected schema_version=3, got {version!r}")
+    if version != 4:
+        raise ParseError(f"Expected schema_version=4, got {version!r}")
 
     match_id = data.get("match_id", "")
     if not match_id:
@@ -242,6 +247,10 @@ def parse_gre_json(data: dict) -> GREParseResult:
     # top-level の games メタデータ（winner / turns / first_player / mulligans）とマージ
     games_meta: dict[int, dict] = {g["game_number"]: g for g in data.get("games", [])}
 
+    # submit_deck_resps[N] = ゲーム N+2 のサイドボード確定後デッキ（N=0 がゲーム2用）
+    # ClientMessageType_SubmitDeckResp から取得した実際のサイドボーディング後デッキ
+    submit_deck_resps: list[dict] = data.get("submit_deck_resps", [])
+
     games: list[GREGame] = []
     for game_ctx in ctx.games:
         meta = games_meta.get(game_ctx.game_number, {})
@@ -250,6 +259,9 @@ def parse_gre_json(data: dict) -> GREParseResult:
             for m in meta.get("mulligans", [])
         ]
         actions = _events_to_actions(game_ctx, ctx)
+        # ゲーム M (M>=2) のサイドボード差分は submit_deck_resps[M-2] から取得する
+        game_idx = game_ctx.game_number - 2
+        submit = submit_deck_resps[game_idx] if 0 <= game_idx < len(submit_deck_resps) else {}
         games.append(GREGame(
             game_number=game_ctx.game_number,
             winner=meta.get("winner", ""),
@@ -257,6 +269,8 @@ def parse_gre_json(data: dict) -> GREParseResult:
             first_player=meta.get("first_player", ""),
             mulligans=mulligans,
             actions=actions,
+            deck_grp_ids_per_game=submit.get("deck_grp_ids", []),
+            sideboard_grp_ids_per_game=submit.get("sideboard_grp_ids", []),
         ))
 
     # バッチ解決のために全 grpId を収集
@@ -317,8 +331,12 @@ def _events_to_actions(
         target_player: str | None = None
         target_grp_id: int | None = None
         counter_type_id: int | None = None
+        life_total: int | None = None
 
-        if et in ("counter_gained", "counter_lost"):
+        if et == "life_change":
+            life_total = detail.get("life_total")
+
+        elif et in ("counter_gained", "counter_lost"):
             counter_type_id = detail.get("counter_type")
 
         elif et == "cast":
@@ -359,6 +377,7 @@ def _events_to_actions(
             target_player=target_player,
             target_grp_id=target_grp_id,
             counter_type=counter_type_id,
+            life_total=life_total,
         ))
 
     return actions
@@ -542,6 +561,15 @@ def _handle_game_state(msg: dict, ctx: _MatchContext) -> None:
         game_ctx.mtgo_turn_number = _to_mtgo_turn(turn_number)
     if active_player is not None:
         game_ctx.active_player_seat = active_player
+
+    # players: ライフ初期値を life_totals に記録（まだ未初期化のプレイヤーのみ）
+    for p in gsm.get("players", []):
+        seat = p.get("systemSeatNumber")
+        life = p.get("lifeTotal")
+        if seat is not None and life is not None:
+            name = _seat_to_name(seat, ctx)
+            if name not in game_ctx.life_totals:
+                game_ctx.life_totals[name] = life
 
     # persistentAnnotations: TargetSpec を累積
     for ann in gsm.get("persistentAnnotations", []):
@@ -735,16 +763,22 @@ def _handle_life_change(ann: dict, game_ctx: _GameContext, ctx: _MatchContext) -
     seat = affected_ids[0] if affected_ids else None
     if seat not in (1, 2):
         return
+    player = _seat_to_name(seat, ctx)
+    current = game_ctx.life_totals.get(player, 20)
+    new_total = current + delta
+    game_ctx.life_totals[player] = new_total
     game_ctx.add_event(
         "life_change",
-        player=_seat_to_name(seat, ctx),
+        player=player,
         delta=delta,
+        life_total=new_total,
     )
 
 
 def _handle_mulligan_req(msg: dict, ctx: _MatchContext) -> None:
     # マリガン情報は schema_version=3 の top-level games.mulligans から取得するため、ここでは何もしない
     pass
+
 
 
 def _handle_declare_attackers(msg: dict, ctx: _MatchContext) -> None:

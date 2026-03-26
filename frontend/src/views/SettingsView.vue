@@ -26,6 +26,27 @@
     </div>
 
     <div class="settings__section">
+      <div class="settings__section-title">デフォルト期間</div>
+      <div class="settings__row">
+        <select v-model="defaultDateFilterInput" class="settings__select">
+          <option value="none">全期間</option>
+          <option value="this_month">今月</option>
+          <option value="last_30_days">直近30日</option>
+          <option value="custom">カスタム開始日</option>
+        </select>
+        <template v-if="defaultDateFilterInput !== 'custom'">
+          <button class="settings__btn settings__btn--primary" @click="saveDefaultDateFilter">保存</button>
+        </template>
+      </div>
+      <div v-if="defaultDateFilterInput === 'custom'" class="settings__row">
+        <label class="settings__inline-label">開始日</label>
+        <input v-model="defaultDateFilterFromInput" type="date" class="settings__date-input" />
+        <button class="settings__btn settings__btn--primary" @click="saveDefaultDateFilter">保存</button>
+      </div>
+      <p class="settings__note">統計・対戦履歴画面を開いたときに自動的にこの期間で絞り込みます。</p>
+    </div>
+
+    <div class="settings__section">
       <div class="settings__section-title">絞り込みの最低試合数</div>
       <div class="settings__row">
         <label class="settings__inline-label">プレイヤー</label>
@@ -40,10 +61,40 @@
     </div>
 
     <div class="settings__section">
+      <div class="settings__section-title">カード辞書</div>
+      <div class="settings__row">
+        <span class="settings__inline-label" style="width: auto;">失敗リスト:</span>
+        <span class="settings__note" style="margin-top: 0;">{{ cardCacheMissCount !== null ? `${cardCacheMissCount}件` : '—' }}</span>
+        <button
+          class="settings__btn settings__btn--danger"
+          :disabled="cardCacheMissCount === 0 || deletingMiss"
+          @click="handleDeleteAllMiss"
+        >{{ deletingMiss ? '削除中…' : 'すべてリセット' }}</button>
+      </div>
+      <p class="settings__note">Scryfall で取得できなかったカード名（トークン等）の記録です。新セットリリース後など、再取得を試みたい場合にリセットしてください。</p>
+    </div>
+
+    <div class="settings__section">
+      <div class="settings__section-title">Scryfall API</div>
+      <div class="settings__row">
+        <label class="settings__toggle-label">
+          <input type="checkbox" :checked="scryfallEnabled" @click.prevent="confirmScryfallToggle" />
+          Scryfall API を利用する
+        </label>
+      </div>
+      <p class="settings__note">
+        オンにすると以下の機能が有効になります:<br />
+        ・MTGOインポート時のフォーマット自動推定<br />
+        ・デッキカードの画像自動取得<br />
+        ※ Scryfall API への外部通信が発生します。オフの場合はインポートが高速化されます。
+      </p>
+    </div>
+
+    <div class="settings__section">
       <div class="settings__section-title">自動インポート</div>
       <div class="settings__row">
         <label class="settings__toggle-label">
-          <input type="checkbox" v-model="autoImportEnabled" @change="saveAutoImport" />
+          <input type="checkbox" :checked="autoImportEnabled" @click.prevent="confirmAutoImportToggle" />
           自動インポートを有効にする
         </label>
       </div>
@@ -163,8 +214,16 @@
       <div class="settings__row">
         <button class="settings__btn settings__btn--danger" @click="resetDialogVisible = true">完全リセット</button>
       </div>
-      <p class="settings__note">完全リセットはすべてのデータ（試合・設定・デッキ定義）を削除します。</p>
+      <p class="settings__note">完全リセットはすべてのデータ（試合・設定・アーキタイプ定義）を削除します。</p>
     </div>
+
+    <ConfirmDialog
+      :visible="toggleConfirmVisible"
+      :message="toggleConfirmMessage"
+      confirm-label="変更する"
+      @confirm="onConfirmToggle"
+      @cancel="toggleConfirmVisible = false"
+    />
 
     <ConfirmDialog
       :visible="confirmVisible"
@@ -183,7 +242,7 @@
 
     <TypeToConfirmDialog
       :visible="resetDialogVisible"
-      message="すべてのデータ（試合・設定・デッキ定義）が完全に削除されます。この操作は取り消せません。"
+      message="すべてのデータ（試合・設定・アーキタイプ定義）が完全に削除されます。この操作は取り消せません。"
       confirm-text="削除する"
       @confirm="onConfirmReset"
       @cancel="resetDialogVisible = false"
@@ -197,7 +256,7 @@
 import { ref, inject, onMounted, type Ref } from 'vue'
 import axios from 'axios'
 import { useToast } from '../composables/useToast'
-import { fetchSettings, updateSettings, deleteApiKey, fetchAutoImportStatus, type AutoImportStatus } from '../api/settings'
+import { fetchSettings, updateSettings, deleteApiKey, fetchAutoImportStatus, fetchCardCacheMissCount, deleteAllCardCacheMiss, type AutoImportStatus } from '../api/settings'
 import { fetchPlayers } from '../api/stats'
 import { downloadBackup, restoreBackup } from '../api/backup'
 import { deleteAllMatches, deleteMatchesByRange, resetDatabase } from '../api/deletion'
@@ -241,15 +300,24 @@ const mtgaLastSyncedAt = ref<string | null>(null)
 const autoImportEnabled = ref(false)
 const autoImportIntervalInput = ref(30)
 const autoImportStatus = ref<AutoImportStatus | null>(null)
+const scryfallEnabled = ref(false)
+const cardCacheMissCount = ref<number | null>(null)
+const deletingMiss = ref(false)
+const defaultDateFilterInput = ref('none')
+const defaultDateFilterFromInput = ref('')
+const toggleConfirmVisible = ref(false)
+const toggleConfirmMessage = ref('')
+const pendingToggle = ref<(() => Promise<void>) | null>(null)
 
 onMounted(async () => {
   try {
-    const [s, players, health, mtgaStatus, aiStatus] = await Promise.all([
+    const [s, players, health, mtgaStatus, aiStatus, missCount] = await Promise.all([
       fetchSettings(),
       fetchPlayers(),
       axios.get('http://localhost:18432/api/health').catch(() => null),
       getMtgaSyncStatus().catch(() => null),
       fetchAutoImportStatus().catch(() => null),
+      fetchCardCacheMissCount().catch(() => null),
     ])
     configured.value = s.api_key_configured
     playerList.value = players
@@ -260,6 +328,10 @@ onMounted(async () => {
     autoImportEnabled.value = s.auto_import_enabled ?? false
     autoImportIntervalInput.value = s.auto_import_interval_sec ?? 30
     autoImportStatus.value = aiStatus
+    scryfallEnabled.value = s.scryfall_enabled ?? false
+    cardCacheMissCount.value = missCount ?? 0
+    defaultDateFilterInput.value = s.default_date_filter ?? 'none'
+    defaultDateFilterFromInput.value = s.default_date_filter_from ?? ''
     if (mtgaStatus?.folder) {
       mtgaFolderInput.value = mtgaStatus.folder
       mtgaFolderSaved.value = true
@@ -288,6 +360,18 @@ async function saveMinMatches() {
       min_deck_matches: Math.max(0, minDeckMatchesInput.value),
     })
     showSuccess('最低試合数を保存しました')
+  } catch {
+    showError('保存に失敗しました')
+  }
+}
+
+async function saveDefaultDateFilter() {
+  try {
+    await updateSettings({
+      default_date_filter: defaultDateFilterInput.value,
+      default_date_filter_from: defaultDateFilterInput.value === 'custom' ? (defaultDateFilterFromInput.value || null) : null,
+    })
+    showSuccess('デフォルト期間を保存しました')
   } catch {
     showError('保存に失敗しました')
   }
@@ -340,7 +424,7 @@ async function onConfirmRestore() {
 }
 
 function handleDeleteAllMatches() {
-  confirmMessage.value = '全試合データを削除しますか？設定・デッキ定義は保持されます。'
+  confirmMessage.value = '全試合データを削除しますか？設定・アーキタイプ定義は保持されます。'
   pendingAction.value = async () => {
     const count = await deleteAllMatches()
     if (count === 0) {
@@ -427,6 +511,48 @@ async function handleSyncMtgaCards() {
 }
 
 
+function confirmScryfallToggle() {
+  const newValue = !scryfallEnabled.value
+  toggleConfirmMessage.value = newValue
+    ? 'Scryfall API を有効にします。カード画像の取得やフォーマット自動推定で外部通信が発生します。よろしいですか？'
+    : 'Scryfall API を無効にします。カード画像の取得やフォーマット自動推定が行われなくなります。よろしいですか？'
+  pendingToggle.value = async () => {
+    scryfallEnabled.value = newValue
+    await updateSettings({ scryfall_enabled: newValue })
+    showSuccess(newValue ? 'Scryfall API を有効にしました' : 'Scryfall API を無効にしました')
+  }
+  toggleConfirmVisible.value = true
+}
+
+function confirmAutoImportToggle() {
+  const newValue = !autoImportEnabled.value
+  toggleConfirmMessage.value = newValue
+    ? '自動インポートを有効にします。設定済みフォルダを定期的にスキャンし、新しい試合を自動で取り込みます。よろしいですか？'
+    : '自動インポートを無効にします。よろしいですか？'
+  pendingToggle.value = async () => {
+    autoImportEnabled.value = newValue
+    await updateSettings({
+      auto_import_enabled: newValue,
+      auto_import_interval_sec: Math.max(10, autoImportIntervalInput.value),
+    })
+    autoImportStatus.value = await fetchAutoImportStatus().catch(() => null)
+    showSuccess(newValue ? '自動インポートを有効にしました' : '自動インポートを無効にしました')
+  }
+  toggleConfirmVisible.value = true
+}
+
+async function onConfirmToggle() {
+  toggleConfirmVisible.value = false
+  if (!pendingToggle.value) return
+  try {
+    await pendingToggle.value()
+  } catch {
+    showError('保存に失敗しました')
+  } finally {
+    pendingToggle.value = null
+  }
+}
+
 async function saveAutoImport() {
   try {
     await updateSettings({
@@ -437,6 +563,20 @@ async function saveAutoImport() {
     showSuccess('自動インポート設定を保存しました')
   } catch {
     showError('保存に失敗しました')
+  }
+}
+
+async function handleDeleteAllMiss() {
+  if (!cardCacheMissCount.value) return
+  deletingMiss.value = true
+  try {
+    const deleted = await deleteAllCardCacheMiss()
+    cardCacheMissCount.value = 0
+    showSuccess(`失敗リストを${deleted}件削除しました`)
+  } catch {
+    showError('削除に失敗しました')
+  } finally {
+    deletingMiss.value = false
   }
 }
 
@@ -496,7 +636,8 @@ async function removeApiKey() {
 }
 
 .settings__input {
-  flex: 1;
+  width: 320px;
+  flex-shrink: 0;
   padding: 6px 10px;
   border: 1px solid #c8b89a;
   border-radius: 4px;
@@ -590,7 +731,8 @@ async function removeApiKey() {
 .settings__file-name {
   font-size: 13px;
   color: #7a6a55;
-  flex: 1;
+  width: 320px;
+  flex-shrink: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -623,7 +765,8 @@ async function removeApiKey() {
   font-size: 12px;
   color: #5a5040;
   font-family: monospace;
-  flex: 1;
+  width: 320px;
+  flex-shrink: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

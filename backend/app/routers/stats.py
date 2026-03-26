@@ -7,7 +7,7 @@ GET /api/stats/cards     - カード別統計
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, case, distinct
+from sqlalchemy import func, case, distinct, or_
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -132,16 +132,19 @@ def _build_match_id_list(
     db: Session,
     player: str,
     opponent: str | None,
-    deck_id: int | None,
-    opponent_deck: str | None,
+    deck_ids: list[int],
+    opponent_decks: list[str],
     format: str | None,
     date_from: str | None,
     date_to: str | None,
-    deck: str | None = None,
+    decks: list[str] | None = None,
     version_id: int | None = None,
 ) -> list[str]:
     """フィルター条件に合致するマッチIDリストを返す。"""
     from datetime import datetime, timezone, timedelta
+
+    if decks is None:
+        decks = []
 
     q = db.query(Match.id).join(
         MatchPlayer, MatchPlayer.match_id == Match.id
@@ -155,7 +158,7 @@ def _build_match_id_list(
         )
         q = q.filter(Match.id.in_(opp_sub))
 
-    if version_id:
+    if version_id and len(deck_ids) == 1:
         ver_sub = (
             db.query(MatchPlayer.match_id)
             .filter(
@@ -165,34 +168,34 @@ def _build_match_id_list(
             .subquery()
         )
         q = q.filter(Match.id.in_(ver_sub))
-    elif deck_id:
+    elif deck_ids:
         deck_sub = (
             db.query(MatchPlayer.match_id)
             .join(DeckVersion, DeckVersion.id == MatchPlayer.deck_version_id)
             .filter(
                 MatchPlayer.player_name == player,
-                DeckVersion.deck_id == deck_id,
+                DeckVersion.deck_id.in_(deck_ids),
             )
             .subquery()
         )
         q = q.filter(Match.id.in_(deck_sub))
-    elif deck:
+    elif decks:
         deck_sub = (
             db.query(MatchPlayer.match_id)
             .filter(
                 MatchPlayer.player_name == player,
-                MatchPlayer.deck_name == deck,
+                MatchPlayer.deck_name.in_(decks),
             )
             .subquery()
         )
         q = q.filter(Match.id.in_(deck_sub))
 
-    if opponent_deck:
+    if opponent_decks:
         opp_deck_sub = (
             db.query(MatchPlayer.match_id)
             .filter(
                 MatchPlayer.player_name != player,
-                MatchPlayer.deck_name == opponent_deck,
+                MatchPlayer.deck_name.in_(opponent_decks),
             )
             .subquery()
         )
@@ -215,10 +218,10 @@ def _build_match_id_list(
 def get_stats(
     player: str = Query(...),
     opponent: str | None = Query(default=None),
-    deck_id: int | None = Query(default=None),
-    deck: str | None = Query(default=None),
+    deck_ids: list[int] = Query(default=[]),
+    decks: list[str] = Query(default=[]),
     version_id: int | None = Query(default=None),
-    opponent_deck: str | None = Query(default=None),
+    opponent_decks: list[str] = Query(default=[]),
     format: str | None = Query(default=None),
     date_from: str | None = Query(default=None, description="YYYY-MM-DD"),
     date_to: str | None = Query(default=None, description="YYYY-MM-DD"),
@@ -228,7 +231,7 @@ def get_stats(
 ):
     """サマリー統計を返す。"""
 
-    match_id_list = _build_match_id_list(db, player, opponent, deck_id, opponent_deck, format, date_from, date_to, deck, version_id)
+    match_id_list = _build_match_id_list(db, player, opponent, deck_ids, opponent_decks, format, date_from, date_to, decks, version_id)
     match_ids_sub = (
         db.query(Match.id)
         .filter(Match.id.in_(match_id_list))
@@ -303,6 +306,9 @@ def get_stats(
     # ── デッキ別勝率 ──────────────────────────────────────────────────
     deck_stats = _calc_deck_stats(db, player, match_id_list, min_deck_matches)
 
+    # ── 対戦相手デッキ別勝率 ──────────────────────────────────────────
+    opponent_deck_stats = _calc_opponent_deck_stats(db, player, match_id_list)
+
     return {
         "total_matches": total_matches,
         "win_rate": win_rate,
@@ -312,7 +318,40 @@ def get_stats(
         "second_play_win_rate": second_win_rate,
         "win_rate_history": win_rate_history,
         "deck_stats": deck_stats,
+        "opponent_deck_stats": opponent_deck_stats,
     }
+
+
+def _calc_opponent_deck_stats(db: Session, player: str, match_id_list: list[str], limit: int = 10) -> list[dict]:
+    """対戦相手のアーキタイプ別の試合数と選択プレイヤーの勝率を返す。試合数上位 limit 件。"""
+    rows = (
+        db.query(MatchPlayer.deck_name, Match.match_winner)
+        .join(Match, Match.id == MatchPlayer.match_id)
+        .filter(
+            MatchPlayer.match_id.in_(match_id_list),
+            MatchPlayer.player_name != player,
+            MatchPlayer.deck_name.isnot(None),
+        )
+        .all()
+    )
+
+    deck_map: dict[str, dict] = {}
+    for deck_name, winner in rows:
+        if deck_name not in deck_map:
+            deck_map[deck_name] = {"matches": 0, "wins": 0}
+        deck_map[deck_name]["matches"] += 1
+        if winner == player:
+            deck_map[deck_name]["wins"] += 1
+
+    sorted_decks = sorted(deck_map.items(), key=lambda x: -x[1]["matches"])[:limit]
+    return [
+        {
+            "deck_name": name,
+            "matches": d["matches"],
+            "win_rate": d["wins"] / d["matches"],
+        }
+        for name, d in sorted_decks
+    ]
 
 
 def _calc_deck_stats(db: Session, player: str, match_id_list: list[str], min_deck_matches: int = 1) -> list[dict]:
@@ -429,10 +468,10 @@ def _calc_card_stats(
 def get_card_stats(
     player: str = Query(...),
     opponent: str | None = Query(default=None),
-    deck_id: int | None = Query(default=None),
-    deck: str | None = Query(default=None),
+    deck_ids: list[int] = Query(default=[]),
+    decks: list[str] = Query(default=[]),
     version_id: int | None = Query(default=None),
-    opponent_deck: str | None = Query(default=None),
+    opponent_decks: list[str] = Query(default=[]),
     format: str | None = Query(default=None),
     date_from: str | None = Query(default=None, description="YYYY-MM-DD"),
     date_to: str | None = Query(default=None, description="YYYY-MM-DD"),
@@ -441,7 +480,7 @@ def get_card_stats(
     db: Session = Depends(get_db),
 ):
     """カード別統計（play/cast のみ）を返す。perspective=self で自分、opponent で相手のカードを集計。"""
-    match_id_list = _build_match_id_list(db, player, opponent, deck_id, opponent_deck, format, date_from, date_to, deck, version_id)
+    match_id_list = _build_match_id_list(db, player, opponent, deck_ids, opponent_decks, format, date_from, date_to, decks, version_id)
 
     if not match_id_list:
         return {"cards": []}
@@ -464,4 +503,5 @@ def _empty_stats() -> dict:
         "second_play_win_rate": 0.0,
         "win_rate_history": [],
         "deck_stats": [],
+        "opponent_deck_stats": [],
     }

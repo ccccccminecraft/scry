@@ -69,6 +69,21 @@ _MTGA_STANDARD_SETS = frozenset({
 _LEGAL_STATUSES = {"legal", "banned"}
 
 
+def _calc_sideboard_diff(
+    prev_main: list[str],
+    cur_main: list[str],
+) -> tuple[dict[str, int], dict[str, int]]:
+    """2ゲーム間のメインデッキ差分からサイドイン/サイドアウトを算出する。"""
+    from collections import Counter
+    prev_counter = Counter(prev_main)
+    cur_counter = Counter(cur_main)
+    diff = cur_counter - prev_counter
+    sideboard_in = dict(diff)
+    diff_out = prev_counter - cur_counter
+    sideboard_out = dict(diff_out)
+    return sideboard_in, sideboard_out
+
+
 class ImportResult(TypedDict):
     match_id: str
     status: Literal["imported", "skipped", "error"]
@@ -84,20 +99,38 @@ class ImportService:
         self._parser = MTGOLogParser()
         self._scryfall = ScryfallClient(db)
 
-    def import_one(self, data: bytes, filename: str) -> ImportResult:
+    def import_one(
+        self,
+        data: bytes,
+        filename: str,
+        skip_format_inference: bool = False,
+    ) -> ImportResult:
         """
         バイト列を受け取りパース・保存する。
+
+        Parameters
+        ----------
+        skip_format_inference : bool
+            True の場合、Scryfall API を呼ばずフォーマットを "unknown" にする。
+            大量インポート時の高速化に使用する。
 
         Returns
         -------
         ImportResult
             status が "imported" / "skipped" / "error" のいずれか
         """
+        import services.import_status as _status
+
+        _status.start(filename)
+        _status.append_log(f"[{filename}] 処理中...")
+
         # 1. パース
         try:
             parsed = self._parser.parse_bytes(data)
         except ParseError as e:
             logger.warning("ParseError for %s: %s", filename, e)
+            _status.append_log(f"  パースエラー: {e}")
+            _status.finish()
             return ImportResult(
                 match_id="",
                 status="error",
@@ -109,6 +142,8 @@ class ImportService:
 
         # 2. 重複チェック
         if self._db.get(Match, match_id) is not None:
+            _status.append_log(f"  スキップ（重複）")
+            _status.finish()
             return ImportResult(
                 match_id=match_id,
                 status="skipped",
@@ -118,8 +153,15 @@ class ImportService:
 
         # 3. 保存・フォーマット推定・デッキ名再判定・commit
         try:
+            _status.update_step("saving")
             self._save(parsed)
-            fmt = self._infer_format(parsed)
+            if skip_format_inference:
+                fmt = "unknown"
+                _status.append_log(f"  フォーマット推定: スキップ")
+            else:
+                _status.update_step("scryfall")
+                fmt = self._infer_format(parsed)
+                _status.append_log(f"  フォーマット判定: {fmt}")
             match = self._db.get(Match, match_id)
             match.format = fmt
 
@@ -137,15 +179,20 @@ class ImportService:
                     mp.deck_name = refined
 
             self._db.commit()
+            _status.append_log(f"  保存完了")
         except Exception as e:
             self._db.rollback()
             logger.exception("Import failed for %s: %s", filename, e)
+            _status.append_log(f"  エラー: {e}")
+            _status.finish()
             return ImportResult(
                 match_id=match_id,
                 status="error",
                 format=None,
                 reason=str(e),
             )
+        finally:
+            _status.finish()
 
         return ImportResult(
             match_id=match_id,
@@ -217,18 +264,21 @@ class ImportService:
                     card_name=card_name,
                     target_name=act["target_name"],
                     sequence=act["sequence"],
+                    life_total=act.get("life_total"),
                 ))
 
             self._db.flush()
 
-    def _detect_deck(self, player_name: str, used_cards: set[str], fmt: str | None) -> str | None:
-        return _detect_deck(self._db, player_name, used_cards, fmt)
+    def _detect_deck(self, player_name: str, used_cards: set[str], fmt: str | None, *, with_format: bool = False):
+        return _detect_deck(self._db, player_name, used_cards, fmt, with_format=with_format)
 
     def _infer_format(self, parsed: ParseResult) -> str:
         """
         全ゲームの play / cast アクションからカード名を収集し、
         Scryfall の legality 情報をもとにフォーマットを推定する。
         """
+        import services.import_status as _status
+
         card_names: set[str] = set()
         for game in parsed["games"]:
             for act in game["actions"]:
@@ -238,7 +288,17 @@ class ImportService:
         if not card_names:
             return "unknown"
 
-        legalities = self._scryfall.fetch_legalities(list(card_names))
+        _status.append_log(f"  フォーマット推定中... ({len(card_names)} 種のカード)")
+
+        def _on_scryfall_progress(done: int, total: int) -> None:
+            _status.update_scryfall(done, total)
+            if total > 0 and (done % 10 == 0 or done == total):
+                _status.append_log(f"  Scryfall 取得中: {done} / {total}")
+
+        legalities = self._scryfall.fetch_legalities(
+            list(card_names),
+            progress_callback=_on_scryfall_progress,
+        )
 
         if not legalities:
             return "unknown"
@@ -260,11 +320,16 @@ def _detect_deck(
     player_name: str,
     used_cards: set[str],
     fmt: str | None,
-) -> str | None:
+    *,
+    with_format: bool = False,
+) -> str | None | tuple[str | None, str | None]:
     """
     使用カードとデッキ定義を照合してデッキ名を返す。
     優先順位: プレイヤー固有定義 → 共通定義（player_name IS NULL）
     マッチなしの場合は None を返す。
+
+    with_format=True の場合は (deck_name, definition_format) のタプルを返す。
+    "unknown" フォーマットはフォーマット未指定として扱い、全定義を照合対象にする。
     """
     definitions = (
         db.query(DeckDefinition)
@@ -280,14 +345,18 @@ def _detect_deck(
     )
 
     if not definitions:
-        return None
+        return (None, None) if with_format else None
+
+    # "unknown" はフォーマット不明なので全定義を照合対象にする
+    effective_fmt = None if fmt == "unknown" else fmt
 
     best_name: str | None = None
+    best_format: str | None = None
     best_count: int = 0
     best_is_player: bool = False
 
     for defn in definitions:
-        if defn.format and fmt and defn.format != fmt:
+        if defn.format and effective_fmt and defn.format != effective_fmt:
             continue
         exclude_cards = {c.card_name for c in defn.cards if c.is_exclude}
         if exclude_cards & used_cards:
@@ -303,9 +372,12 @@ def _detect_deck(
                 or (match_count == best_count and is_player and not best_is_player)
             ):
                 best_name = defn.deck_name
+                best_format = defn.format
                 best_count = match_count
                 best_is_player = is_player
 
+    if with_format:
+        return best_name, best_format
     return best_name
 
 
@@ -323,18 +395,24 @@ class SurveilImportService:
         data: dict,
         filename: str,
         background_tasks: BackgroundTasks | None = None,
+        skip_scryfall: bool = False,
     ) -> ImportResult:
         """
         Surveil 出力ファイルをデシリアライズした dict を受け取りパース・保存する。
-        schema_version=2 と schema_version=3 の両方に対応する。
+        schema_version=2 / 3 / 4 に対応する。
+
+        Parameters
+        ----------
+        skip_scryfall : bool
+            True の場合、Scryfall API を呼ばずフォーマット推定のフォールバックをスキップする。
 
         Returns
         -------
         ImportResult
             status が "imported" / "skipped" / "error" のいずれか
         """
-        if data.get("schema_version") == 3:
-            return self._import_v3(data, filename, background_tasks)
+        if data.get("schema_version") in (3, 4):
+            return self._import_v3(data, filename, background_tasks, skip_scryfall=skip_scryfall)
 
         try:
             parsed = parse_surveil_json(data)
@@ -350,17 +428,27 @@ class SurveilImportService:
 
         try:
             self._save(parsed)
-            fmt = self._infer_format_from_deck(parsed["deck_main"])
+            fmt = self._infer_format_from_deck(parsed["deck_main"], skip_scryfall=skip_scryfall)
             match = self._db.get(Match, match_id)
             match.format = fmt
 
-            # self プレイヤーのデッキ名を検出（deck_main の全カードを使用）
-            used_cards = set(parsed["deck_main"].keys())
+            # アクション記録からプレイヤーごとの使用カードを収集（相手デッキ検出用）
+            player_cards: dict[str, set[str]] = {}
+            for game_dict in parsed["games"]:
+                for act in game_dict["actions"]:
+                    if act["action_type"] in ("play", "cast") and act["card_name"]:
+                        player_cards.setdefault(act["player"], set()).add(act["card_name"])
+
+            # self: deck_main（全カード）を使用、opponent: アクション記録を使用
+            self_cards = set(parsed["deck_main"].keys())
             for mp in match.players:
                 if mp.player_name == parsed["self_player"]:
-                    refined = _detect_deck(self._db, mp.player_name, used_cards, fmt)
-                    if refined is not None:
-                        mp.deck_name = refined
+                    cards = self_cards
+                else:
+                    cards = player_cards.get(mp.player_name, set())
+                refined = _detect_deck(self._db, mp.player_name, cards, fmt)
+                if refined is not None:
+                    mp.deck_name = refined
 
             self._db.commit()
         except Exception as e:
@@ -408,6 +496,8 @@ class SurveilImportService:
                 winner=game_dict["winner"],
                 turns=game_dict["turns"],
                 first_player=game_dict["first_player"],
+                sideboard_in=json_module.dumps(game_dict["sideboard_in"], ensure_ascii=False) if game_dict.get("sideboard_in") is not None else None,
+                sideboard_out=json_module.dumps(game_dict["sideboard_out"], ensure_ascii=False) if game_dict.get("sideboard_out") is not None else None,
             )
             self._db.add(game)
             self._db.flush()
@@ -430,6 +520,7 @@ class SurveilImportService:
                     card_name=act["card_name"],
                     target_name=act["target_name"],
                     sequence=act["sequence"],
+                    life_total=act.get("life_total"),
                 ))
 
             self._db.flush()
@@ -439,8 +530,9 @@ class SurveilImportService:
         data: dict,
         filename: str,
         background_tasks: BackgroundTasks | None = None,
+        skip_scryfall: bool = False,
     ) -> ImportResult:
-        """schema_version=3（GRE メッセージ形式）のインポート処理。"""
+        """schema_version=3/4（GRE メッセージ形式）のインポート処理。"""
         try:
             gre_result = parse_gre_json(data)
         except GREParseError as e:
@@ -464,16 +556,27 @@ class SurveilImportService:
             if fmt is None:
                 fmt = self._infer_format_from_grp_ids(gre_result["deck_grp_ids"])
             if fmt is None:
-                fmt = self._infer_format_from_deck(parsed["deck_main"])
+                fmt = self._infer_format_from_deck(parsed["deck_main"], skip_scryfall=skip_scryfall)
             match = self._db.get(Match, match_id)
             match.format = fmt
 
-            used_cards = set(parsed["deck_main"].keys())
+            # アクション記録からプレイヤーごとの使用カードを収集（相手デッキ検出用）
+            player_cards: dict[str, set[str]] = {}
+            for game_dict in parsed["games"]:
+                for act in game_dict["actions"]:
+                    if act["action_type"] in ("play", "cast") and act["card_name"]:
+                        player_cards.setdefault(act["player"], set()).add(act["card_name"])
+
+            # self: deck_main（全カード）を使用、opponent: アクション記録を使用
+            self_cards = set(parsed["deck_main"].keys())
             for mp in match.players:
                 if mp.player_name == parsed["self_player"]:
-                    refined = _detect_deck(self._db, mp.player_name, used_cards, fmt)
-                    if refined is not None:
-                        mp.deck_name = refined
+                    cards = self_cards
+                else:
+                    cards = player_cards.get(mp.player_name, set())
+                refined = _detect_deck(self._db, mp.player_name, cards, fmt)
+                if refined is not None:
+                    mp.deck_name = refined
 
             # デッキ自動同期: EventSetDeckV2 のデッキ名が取得できている場合のみ
             deck_name = gre_result.get("deck_name")
@@ -490,8 +593,8 @@ class SurveilImportService:
                     for mp in match.players:
                         if mp.player_name == parsed["self_player"]:
                             mp.deck_version_id = version.id
-                    # Scryfall ID・画像URLをバックグラウンドで補完
-                    if background_tasks is not None:
+                    # Scryfall ID・画像URLをバックグラウンドで補完（Scryfall 有効時のみ）
+                    if background_tasks is not None and not skip_scryfall:
                         from services.card_image_service import fill_scryfall_ids
                         card_ids = [vc.card_id for vc in version.cards]
                         background_tasks.add_task(fill_scryfall_ids, card_ids)
@@ -541,6 +644,12 @@ class SurveilImportService:
         }  # counter_gained / counter_lost 両方を含む
         counter_name_map = self._build_counter_name_map(counter_type_ids)
 
+        # サイドボード差分計算用: 常にゲーム1のデッキ（top-level の deck_grp_ids）を基準とする
+        # ゲーム2もゲーム3も元のデッキからのサイドイン/アウトを示すため
+        game1_main_names: list[str] = [
+            name_map[g] for g in gre_result["deck_grp_ids"] if g in name_map
+        ]
+
         games: list[SurveilGame] = []
         for game in gre_result["games"]:
             actions: list[SurveilGameAction] = []
@@ -566,7 +675,16 @@ class SurveilImportService:
                     card_name=card_name,
                     target_name=target_name,
                     sequence=act["seq"],
+                    life_total=act.get("life_total"),
                 ))
+            # サイドボード差分: SubmitDeckReq が存在するゲームのみ算出
+            per_game_ids = game.get("deck_grp_ids_per_game", [])
+            if per_game_ids:
+                cur_main_names: list[str] = [name_map[g] for g in per_game_ids if g in name_map]
+                sideboard_in, sideboard_out = _calc_sideboard_diff(game1_main_names, cur_main_names)
+            else:
+                sideboard_in, sideboard_out = None, None
+
             games.append(SurveilGame(
                 game_number=game["game_number"],
                 winner=game["winner"],
@@ -574,6 +692,8 @@ class SurveilImportService:
                 first_player=game["first_player"],
                 mulligans=game["mulligans"],
                 actions=actions,
+                sideboard_in=sideboard_in,
+                sideboard_out=sideboard_out,
             ))
 
         return SurveilParseResult(
@@ -804,7 +924,7 @@ class SurveilImportService:
         # Pioneer-legal → pioneer
         return "pioneer"
 
-    def _infer_format_from_deck(self, deck_main: dict[str, int]) -> str:
+    def _infer_format_from_deck(self, deck_main: dict[str, int], *, skip_scryfall: bool = False) -> str:
         """
         デッキリスト（card_name → count）から Scryfall で legality を確認し
         MTGA_FORMAT_PRIORITY 順にフォーマットを返す。基本土地は除外する。
@@ -814,6 +934,9 @@ class SurveilImportService:
           現状は 60 枚未満を Limited とみなして "unknown" を返すが、実際の Limited ログで
           検証後に条件を見直すこと。
         """
+        if skip_scryfall:
+            return "unknown"
+
         # 60 枚未満は Limited（Draft/Sealed）とみなしてスキップ
         if sum(deck_main.values()) < 60:
             return "unknown"

@@ -1,6 +1,6 @@
 <template>
   <div class="deck-def">
-    <h1 class="deck-def__title">デッキ定義管理</h1>
+    <h1 class="deck-def__title">アーキタイプ定義管理</h1>
 
     <ConfirmDialog
       :visible="confirmVisible"
@@ -78,21 +78,21 @@
 
     <!-- 既存試合への適用 -->
     <div class="deck-def__section">
-      <div class="deck-def__section-title">既存試合へのデッキ定義適用</div>
+      <div class="deck-def__section-title">既存試合へのアーキタイプ定義適用</div>
       <div class="deck-def__bulk-form">
         <div class="deck-def__apply-btns">
           <button
             class="deck-def__btn deck-def__btn--primary"
             :disabled="applying"
             @click="runApply(false)"
-          >{{ applying ? '適用中...' : 'デッキ名未設定の試合に適用' }}</button>
+          >{{ applying ? '適用中...' : 'アーキタイプ未設定の試合に適用' }}</button>
           <button
             class="deck-def__btn"
             :disabled="applying"
             @click="runApply(true)"
           >{{ applying ? '適用中...' : 'すべての試合に適用（上書き）' }}</button>
         </div>
-        <p class="deck-def__apply-note">「デッキ名未設定」は deck_name が空の試合のみを対象にします。「すべての試合」は既存のデッキ名も上書きします。</p>
+        <p class="deck-def__apply-note">「アーキタイプ未設定」はアーキタイプが判定されていない試合のみを対象にします。「すべての試合」は判定済みのアーキタイプも上書きします。</p>
       </div>
       <div class="deck-def__apply-divider"></div>
       <div class="deck-def__bulk-form">
@@ -111,9 +111,39 @@
           class="deck-def__btn deck-def__btn--primary"
           :disabled="applying || !applyTargetDeck.trim()"
           @click="runApplyTargetDeck"
-        >{{ applying ? '適用中...' : '指定デッキに適用（上書き）' }}</button>
+        >{{ applying ? '適用中...' : '指定アーキタイプに適用（上書き）' }}</button>
       </div>
-      <p class="deck-def__apply-note">指定したデッキ名の試合を対象に、デッキ定義を再判定して上書きします。</p>
+      <p class="deck-def__apply-note">指定したアーキタイプの試合を対象に、アーキタイプ定義を再判定して上書きします。</p>
+      <div class="deck-def__apply-divider"></div>
+      <!-- unknown 試合への適用 -->
+      <div class="deck-def__unknown-block">
+        <div class="deck-def__unknown-header">
+          <span class="deck-def__unknown-title">フォーマットが「unknown」の試合に適用</span>
+          <span class="deck-def__unknown-count">
+            対象:
+            <span v-if="unknownCount === null">—</span>
+            <strong v-else>{{ unknownCount }} 件</strong>
+            <button class="deck-def__btn-link" @click="loadUnknownCount">更新</button>
+          </span>
+        </div>
+        <div class="deck-def__unknown-options">
+          <label class="deck-def__check-label">
+            <input type="checkbox" v-model="unknownApplyDeckName" />
+            デッキ名を設定する（未設定の試合のみ）
+          </label>
+          <label class="deck-def__check-label">
+            <input type="checkbox" v-model="unknownInferFormat" />
+            フォーマットをアーキタイプ定義から推定する
+            <span class="deck-def__check-note">※ format が設定されたアーキタイプ定義にのみ適用</span>
+          </label>
+        </div>
+        <button
+          class="deck-def__btn deck-def__btn--primary"
+          style="align-self: flex-start;"
+          :disabled="applyingUnknown || unknownCount === 0"
+          @click="runApplyUnknown"
+        >{{ applyingUnknown ? '適用中...' : 'unknown の試合に適用する' }}</button>
+      </div>
     </div>
 
     <!-- Claude 生成 -->
@@ -137,10 +167,10 @@
       </div>
     </div>
 
-    <!-- デッキ定義一覧 -->
+    <!-- アーキタイプ定義一覧 -->
     <div class="deck-def__section">
       <div class="deck-def__section-header">
-        <div class="deck-def__section-title">デッキ定義一覧</div>
+        <div class="deck-def__section-title">アーキタイプ定義一覧</div>
         <div class="deck-def__list-controls">
           <select v-model="filterDefFormat" class="deck-def__select deck-def__select--sm">
             <option value="">フォーマット: すべて</option>
@@ -150,8 +180,8 @@
         </div>
       </div>
 
-      <div v-if="definitions.length === 0" class="deck-def__empty">デッキ定義がありません</div>
-      <div v-else-if="filteredDefinitions.length === 0" class="deck-def__empty">該当するデッキ定義がありません</div>
+      <div v-if="definitions.length === 0" class="deck-def__empty">アーキタイプ定義がありません</div>
+      <div v-else-if="filteredDefinitions.length === 0" class="deck-def__empty">該当するアーキタイプ定義がありません</div>
 
       <table v-else class="deck-def__table">
         <thead>
@@ -188,7 +218,7 @@
     <!-- 生成プレビューモーダル -->
     <div v-if="genPreview" class="deck-def__overlay" @click.self="genPreview = null">
       <div class="deck-def__modal deck-def__modal--wide">
-        <h2 class="deck-def__modal-title">生成されたデッキ定義（{{ genPreview.definitions.length }}件）</h2>
+        <h2 class="deck-def__modal-title">生成されたアーキタイプ定義（{{ genPreview.definitions.length }}件）</h2>
         <p class="deck-def__gen-meta">
           フォーマット: {{ genPreview.format ?? '問わず' }} &nbsp;／&nbsp;
           生成日時: {{ new Date(genPreview.generated_at).toLocaleString('ja-JP') }}
@@ -226,7 +256,7 @@
     <!-- 編集モーダル -->
     <div v-if="editing" class="deck-def__overlay" @click.self="editing = null">
       <div class="deck-def__modal">
-        <h2 class="deck-def__modal-title">{{ editingId ? 'デッキ定義を編集' : 'デッキ定義を作成' }}</h2>
+        <h2 class="deck-def__modal-title">{{ editingId ? 'アーキタイプ定義を編集' : 'アーキタイプ定義を作成' }}</h2>
 
         <div class="deck-def__form">
           <div class="deck-def__field">
@@ -277,7 +307,7 @@ import { useToast } from '../composables/useToast'
 import {
   fetchDeckDefinitions, createDeckDefinition, updateDeckDefinition,
   deleteDeckDefinition, deckBulkUpdate, importDeckDefinitions, exportDeckDefinitions,
-  generateDeckDefinitions, applyDeckDefinitions,
+  generateDeckDefinitions, applyDeckDefinitions, getUnknownMatchCount,
   type DeckDefinition, type DeckDefinitionInput, type GeneratedDeckPayload,
 } from '../api/decks'
 import { fetchPlayers, fetchFormats } from '../api/stats'
@@ -326,12 +356,53 @@ const applying = ref(false)
 const applyTargetDeck = ref('')
 const applyTargetFormat = ref('')
 
+// unknown 試合への適用
+const unknownCount = ref<number | null>(null)
+const unknownApplyDeckName = ref(true)
+const unknownInferFormat = ref(true)
+const applyingUnknown = ref(false)
+
+async function loadUnknownCount() {
+  try {
+    unknownCount.value = await getUnknownMatchCount()
+  } catch {
+    unknownCount.value = null
+  }
+}
+
+function runApplyUnknown() {
+  if (unknownCount.value === 0) return
+  const lines: string[] = ['フォーマットが「unknown」の試合にアーキタイプ定義を照合します。']
+  if (unknownApplyDeckName.value) lines.push('・デッキ名が未設定の試合にデッキ名を設定します。')
+  if (unknownInferFormat.value) lines.push('・アーキタイプ定義に format が設定されている場合、フォーマットも更新します。')
+  showConfirm(lines.join('\n'), '実行', async () => {
+    applyingUnknown.value = true
+    try {
+      const res = await applyDeckDefinitions(
+        false,
+        undefined,
+        'unknown',
+        unknownInferFormat.value,
+      )
+      const parts = [`デッキ名更新: ${res.updated} 件`]
+      if (unknownInferFormat.value) parts.push(`フォーマット更新: ${res.format_updated} 件`)
+      parts.push(`対象外: ${res.skipped} 件`)
+      showSuccess(parts.join('　'))
+      unknownCount.value = await getUnknownMatchCount()
+    } catch (e) {
+      showError(e instanceof Error ? e.message : '適用に失敗しました')
+    } finally {
+      applyingUnknown.value = false
+    }
+  })
+}
+
 function runApplyTargetDeck() {
   const deck = applyTargetDeck.value.trim()
   if (!deck) return
   const formatLabel = applyTargetFormat.value ? `フォーマット「${applyTargetFormat.value}」の` : ''
   showConfirm(
-    `${formatLabel}デッキ「${deck}」の試合にデッキ定義を再適用します。既存のデッキ名も上書きされます。よろしいですか？`,
+    `${formatLabel}デッキ「${deck}」の試合にアーキタイプ定義を再適用します。既存のデッキ名も上書きされます。よろしいですか？`,
     '適用',
     async () => {
       applying.value = true
@@ -353,8 +424,8 @@ function runApplyTargetDeck() {
 
 function runApply(overwrite: boolean) {
   const message = overwrite
-    ? 'すべての試合にデッキ定義を適用します。既存のデッキ名も上書きされます。よろしいですか？'
-    : 'デッキ名が未設定の試合にデッキ定義を適用します。よろしいですか？'
+    ? 'すべての試合にアーキタイプ定義を適用します。既存のデッキ名も上書きされます。よろしいですか？'
+    : 'デッキ名が未設定の試合にアーキタイプ定義を適用します。よろしいですか？'
   showConfirm(message, '適用', async () => {
     applying.value = true
     try {
@@ -418,7 +489,7 @@ function runImport() {
 
 function runExport() {
   showConfirm(
-    '現在のデッキ定義をJSONファイルとしてエクスポートします。よろしいですか？',
+    '現在のアーキタイプ定義をJSONファイルとしてエクスポートします。よろしいですか？',
     'エクスポート',
     async () => {
       try {
@@ -572,6 +643,7 @@ onMounted(async () => {
     definitions.value = defs
     playerList.value = players
     formatList.value = formats
+    loadUnknownCount()
   } catch {
     showError('データの取得に失敗しました')
   }
@@ -644,6 +716,68 @@ onMounted(async () => {
   border-top: 1px solid #e0d8c8;
   margin: 12px 0;
   width: 100%;
+}
+
+.deck-def__unknown-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  background: #f5f0e8;
+  border: 1px solid #d8cfc0;
+  border-radius: 6px;
+  width: 100%;
+}
+
+.deck-def__unknown-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.deck-def__unknown-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2c2416;
+}
+
+.deck-def__unknown-count {
+  font-size: 12px;
+  color: #7a6a55;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.deck-def__btn-link {
+  background: none;
+  border: none;
+  color: #4a6fa5;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.deck-def__unknown-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.deck-def__check-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #2c2416;
+  cursor: pointer;
+}
+
+.deck-def__check-note {
+  font-size: 11px;
+  color: #9a8a75;
+  margin-left: 2px;
 }
 
 .deck-def__bulk-form {
@@ -821,8 +955,8 @@ onMounted(async () => {
 }
 
 .deck-def__field--grow {
-  flex: 1;
-  min-width: 200px;
+  width: 240px;
+  flex-shrink: 0;
 }
 
 .deck-def__btn--claude {

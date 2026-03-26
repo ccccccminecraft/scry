@@ -32,6 +32,8 @@ export interface GameSummary {
   turns: number
   first_player: string
   mulligans: Record<string, number>
+  sideboard_in: Record<string, number> | null
+  sideboard_out: Record<string, number> | null
 }
 
 export interface MatchDetail {
@@ -52,6 +54,7 @@ export interface ActionEntry {
   card_name: string | null
   target_name: string | null
   sequence: number
+  life_total: number | null
 }
 
 export interface ActionLogResponse {
@@ -62,10 +65,10 @@ export interface ActionLogResponse {
 export interface MatchFilters {
   player?: string
   opponent?: string
-  deck_id?: number
-  deck?: string
+  deck_ids?: number[]
+  decks?: string[]
   version_id?: number
-  opponent_deck?: string
+  opponent_decks?: string[]
   format?: string
   date_from?: string
   date_to?: string
@@ -90,10 +93,13 @@ export async function fetchActionLog(matchId: string, gameId: number): Promise<A
   return res.data
 }
 
-export type ExportDetailLevel = 'summary' | 'matches' | 'actions'
-
 export interface ExportParams extends MatchFilters {
-  detail_level: ExportDetailLevel
+  include_summary?: boolean
+  include_deck_stats?: boolean
+  include_card_stats?: boolean
+  include_deck_list?: boolean
+  include_matches?: boolean
+  include_actions?: boolean
   limit: number
   no_limit?: boolean
 }
@@ -101,6 +107,98 @@ export interface ExportParams extends MatchFilters {
 export async function fetchExportCount(filters: MatchFilters): Promise<number> {
   const res = await client.get<{ count: number }>('/api/matches/export/count', { params: filters })
   return res.data.count
+}
+
+export interface CardDictionaryCount {
+  total: number
+  cached: number
+  fetchable: number
+  miss: number
+}
+
+export async function fetchCardDictionaryCount(filters: MatchFilters): Promise<CardDictionaryCount> {
+  const res = await client.get<CardDictionaryCount>('/api/matches/export/card-dictionary/count', { params: filters })
+  return res.data
+}
+
+export async function fetchCardDictionary(filters: MatchFilters): Promise<string> {
+  const res = await client.get<string>('/api/matches/export/card-dictionary', {
+    params: filters,
+    responseType: 'text',
+  })
+  return res.data
+}
+
+export interface FetchMissingResult {
+  fetched: number
+  failed: number
+  failed_names: string[]
+}
+
+function _buildSearchParams(filters: MatchFilters): URLSearchParams {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value === undefined || value === null) continue
+    if (Array.isArray(value)) {
+      for (const v of value) params.append(key, String(v))
+    } else {
+      params.append(key, String(value))
+    }
+  }
+  return params
+}
+
+export function streamFetchMissingCardData(
+  filters: MatchFilters,
+  onProgress: (done: number, total: number, fetched: number, failed: number) => void,
+): Promise<FetchMissingResult> {
+  const params = _buildSearchParams(filters)
+  const url = `http://localhost:18432/api/matches/export/card-dictionary/fetch-missing?${params}`
+
+  return new Promise(async (resolve, reject) => {
+    try {
+      const response = await fetch(url, { method: 'POST' })
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        reject(new Error(body.detail || `HTTP error ${response.status}`))
+        return
+      }
+
+      const reader = response.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        // SSE イベントは "\n\n" で区切られる
+        const parts = buffer.split('\n\n')
+        buffer = parts.pop() ?? ''
+        for (const part of parts) {
+          for (const line of part.split('\n')) {
+            if (!line.startsWith('data: ')) continue
+            const data = JSON.parse(line.slice(6))
+            onProgress(data.done, data.total, data.fetched, data.failed)
+            if (data.complete) {
+              resolve({ fetched: data.fetched, failed: data.failed, failed_names: data.failed_names })
+            }
+          }
+        }
+      }
+    } catch (e) {
+      reject(e instanceof Error ? e : new Error(String(e)))
+    }
+  })
+}
+
+export async function resetCardCacheMiss(filters: MatchFilters): Promise<{ deleted: number }> {
+  const res = await client.post<{ deleted: number }>(
+    '/api/matches/export/card-dictionary/reset-miss',
+    {},
+    { params: filters },
+  )
+  return res.data
 }
 
 export async function fetchExportMarkdown(params: ExportParams): Promise<string> {
