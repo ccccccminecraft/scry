@@ -69,7 +69,14 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
-  backendProcess?.kill()
+  if (backendProcess?.pid) {
+    if (process.platform === 'win32') {
+      // PyInstaller は子プロセスを生成するため、taskkill /T でツリーごと終了させる
+      spawn('taskkill', ['/F', '/T', '/PID', String(backendProcess.pid)])
+    } else {
+      backendProcess.kill()
+    }
+  }
 })
 
 // IPC: 単体ファイル選択
