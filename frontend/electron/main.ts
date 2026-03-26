@@ -1,5 +1,5 @@
 import { app, BrowserWindow, Menu, ipcMain, dialog } from 'electron'
-import { spawn, ChildProcess } from 'child_process'
+import { spawn, spawnSync, ChildProcess } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 
@@ -72,7 +72,7 @@ app.on('before-quit', () => {
   if (backendProcess?.pid) {
     if (process.platform === 'win32') {
       // PyInstaller は子プロセスを生成するため、taskkill /T でツリーごと終了させる
-      spawn('taskkill', ['/F', '/T', '/PID', String(backendProcess.pid)])
+      spawnSync('taskkill', ['/F', '/T', '/PID', String(backendProcess.pid)])
     } else {
       backendProcess.kill()
     }
