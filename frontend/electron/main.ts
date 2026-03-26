@@ -1,5 +1,5 @@
 import { app, BrowserWindow, Menu, ipcMain, dialog } from 'electron'
-import { spawn, spawnSync, ChildProcess } from 'child_process'
+import { spawn, spawnSync, execSync, ChildProcess } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 
@@ -68,8 +68,15 @@ app.on('window-all-closed', () => {
     // before-quit 内での spawnSync は Electron 終了シーケンス中のため不安定
     if (backendProcess?.pid) {
       if (process.platform === 'win32') {
-        // PyInstaller は子プロセスを生成するため taskkill /T でツリーごと終了させる
-        spawnSync('taskkill', ['/F', '/T', '/PID', String(backendProcess.pid)])
+        const pid = backendProcess.pid
+        try {
+          // execSync は cmd.exe 経由のため System32 が確実に参照される
+          // /T でプロセスツリーごと終了（PyInstaller 子プロセス対策）
+          execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore' })
+        } catch {
+          // taskkill が失敗した場合は Node.js の process.kill で直接終了
+          try { process.kill(pid) } catch { /* ignore */ }
+        }
       } else {
         backendProcess.kill()
       }
